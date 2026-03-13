@@ -2633,7 +2633,13 @@
                 "added_by": 5624278091,
                 "added_at": "2026-03-04T03:14:25.376856",
                 "telegram_username": "",
-                "friends": []
+                "friends": [
+                    {
+                        "user_id": "7529875009",
+                        "name": "KulsumCA",
+                        "telegram_username": ""
+                    }
+                    ]
             }
         ],
         "selected_account_id": 1,
@@ -3118,5 +3124,143 @@
         "selected_account_id": 1,
         "telegram_username": "",
         "last_active": "2026-03-11T03:56:58.263922"
+    },
+    "8434455888": {
+        "accounts": [
+            {
+                "id": 1,
+                "custom_name": "canada",
+                "username": "Masud1CA",
+                "password": "Masud1CA",
+                "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJndWxpLXVzZXIiLCJpYXQiOjE3NzMzOTU1MDksImV4cCI6MTc3MzQyMDU0MiwiaWQiOiIyMDMxNzIyNzY3MzU1NzI3ODc0Iiwibmlja25hbWUiOiJNYXN1ZDFDQSJ9.n20SmGMrecTvREDar_kew7h7yxVm2Fd9Q-w-agbsOhA",
+                "api_user_id": "2031722767355727874",
+                "nickname": "Masud1CA",
+                "last_login": "2026-03-13T03:51:46.042567",
+                "active": true,
+                "default": true,
+                "added_by": 5624278091,
+                "added_at": "2026-03-13T03:51:46.042597",
+                "telegram_username": "",
+                "friends": []
+            }
+        ],
+        "selected_account_id": 1,
+        "telegram_username": "",
+        "last_active": "2026-03-13T03:51:46.042497"
+    },
+    "7434349199": {
+        "accounts": [
+            {
+                "id": 1,
+                "custom_name": "canada",
+                "username": "AkashCA",
+                "password": "AkashCA",
+                "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJndWxpLXVzZXIiLCJpYXQiOjE3NzMzOTU1MTIsImV4cCI6MTc3MzQyMDU0NSwiaWQiOiIyMDAxMjMwNTUzMDk3OTQ5MTg2Iiwibmlja25hbWUiOiJBa2FzaENBIn0.k1alqEPz1tmNZJVWVVU3f2Gr3aiP8r1U12A2vPBNwYY",
+                "api_user_id": "2001230553097949186",
+                "nickname": "AkashCA",
+                "last_login": "2026-03-13T03:51:49.524223",
+                "active": true,
+                "default": true,
+                "added_by": 5624278091,
+                "added_at": "2026-03-13T03:51:49.524245",
+                "telegram_username": "",
+                "friends": []
+            }
+        ],
+        "selected_account_id": 1,
+        "telegram_username": "",
+        "last_active": "2026-03-13T03:51:49.524162"
+    },
+    "6229196045": {
+        "accounts": [
+            {
+                "id": 1,
+                "custom_name": "canada",
+                "username": "Julhabib1CA",
+                "password": "Julhabib1CA",
+                "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJndWxpLXVzZXIiLCJpYXQiOjE3NzMzOTU1MTUsImV4cCI6MTc3MzQyMDU0OCwiaWQiOiIyMDMyMTg3MzcyNDc3NTk5NzQ2Iiwibmlja25hbWUiOiJKdWxoYWJpYjFDQSJ9.BDyRFb67kQ8im1u0ZV-rf1EpUUkkgErXbJhJHTO4pOg",
+                "api_user_id": "2032187372477599746",
+                "nickname": "Julhabib1CA",
+                "last_login": "2026-03-13T03:51:51.957569",
+                "active": true,
+                "default": true,
+                "added_by": 5624278091,
+                "added_at": "2026-03-13T03:51:51.957589",
+                "telegram_username": "",
+                "friends": []
+            }
+        ],
+        "selected_account_id": 1,
+        "telegram_username": "",
+        "last_active": "2026-03-13T03:51:51.957478"
+    },
+    "7344659722": {
+        "accounts": [
+            {
+                "id": 1,
+                "custom_name": "canada",
+                "username": "TazulCA",
+                "password": "TazulCA",
+                "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJndWxpLXVzZXIiLCJpYXQiOjE3NzMzOTU1MTYsImV4cCI6MTc3MzQyMDU0OSwiaWQiOiIyMDMyMjAwMDkxOTQzNTU1MDczIiwibmlja25hbWUiOiJUYXp1bENBIn0.0Kvtc-IrREc_vq8Zg70dlN4tbK8cPEi9D-dfIZWPadc",
+                "api_user_id": "2032200091943555073",
+                "nickname": "TazulCA",
+                "last_login": "2026-03-13T03:51:53.373221",
+                "active": true,
+                "default": true,
+                "added_by": 5624278091,
+                "added_at": "2026-03-13T03:51:53.373269",
+                "telegram_username": "",
+                "friends": []
+            }
+        ],
+        "selected_account_id": 1,
+        "telegram_username": "",
+        "last_active": "2026-03-13T03:51:53.372992"
+    },
+    "6332159786": {
+        "accounts": [
+            {
+                "id": 1,
+                "custom_name": "canada",
+                "username": "Sagor1CA",
+                "password": "Sagor1CA",
+                "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJndWxpLXVzZXIiLCJpYXQiOjE3NzMzOTU1MTgsImV4cCI6MTc3MzQyMDU1MCwiaWQiOiIyMDMyMjg4MDg2OTgxODU3MjgyIiwibmlja25hbWUiOiJTYWdvcjFDQSJ9.rdG5P6pEoz54iwIaSFcFlof923aDwvZAn3oW6PHhw9c",
+                "api_user_id": "2032288086981857282",
+                "nickname": "Sagor1CA",
+                "last_login": "2026-03-13T03:51:54.808886",
+                "active": true,
+                "default": true,
+                "added_by": 5624278091,
+                "added_at": "2026-03-13T03:51:54.808907",
+                "telegram_username": "",
+                "friends": []
+            }
+        ],
+        "selected_account_id": 1,
+        "telegram_username": "",
+        "last_active": "2026-03-13T03:51:54.808813"
+    },
+    "7529875009": {
+        "accounts": [
+            {
+                "id": 1,
+                "custom_name": "canada",
+                "username": "KulsumCA",
+                "password": "KulsumCA",
+                "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJndWxpLXVzZXIiLCJpYXQiOjE3NzMzOTU1MjksImV4cCI6MTc3MzQyMDU2MiwiaWQiOiIyMDMyMDI1MDg1MzQzMTU4MjczIiwibmlja25hbWUiOiJLdWxzdW1DQSJ9.AEE18h3layxoh1W__W8xUM61yj1neAUvLWeuKS-3Jtk",
+                "api_user_id": "2032025085343158273",
+                "nickname": "KulsumCA",
+                "last_login": "2026-03-13T03:52:06.182267",
+                "active": true,
+                "default": true,
+                "added_by": 5624278091,
+                "added_at": "2026-03-13T03:52:06.182284",
+                "telegram_username": "",
+                "friends": []
+            }
+        ],
+        "selected_account_id": 1,
+        "telegram_username": "",
+        "last_active": "2026-03-13T03:52:06.182212"
     }
 }
