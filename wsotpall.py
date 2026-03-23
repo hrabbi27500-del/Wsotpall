@@ -41,8 +41,8 @@ RENDER_PORT = int(os.environ.get("PORT", 10000))
 
 # Add these constants after your existing constants (around line 30-40)
 # Payment group settings
-PAYMENT_GROUP_ID = os.environ.get("PAYMENT_GROUP_ID", "-1003747593952")  # Replace with your group ID
-PAYMENT_GROUP_LINK = os.environ.get("PAYMENT_GROUP_LINK", "https://t.me/livepayupdate")
+PAYMENT_GROUP_ID = os.environ.get("PAYMENT_GROUP_ID", "-1003783247683)  # Replace with your group ID
+PAYMENT_GROUP_LINK = os.environ.get("PAYMENT_GROUP_LINK", "https://t.me/livepayupdates")
 
 # Fake payment settings
 FAKE_PAYMENT_GROUP_ID = os.environ.get("FAKE_PAYMENT_GROUP_ID", PAYMENT_GROUP_ID)  # Can be same or different group
@@ -50,7 +50,7 @@ FAKE_PAYMENT_ENABLED = os.environ.get("FAKE_PAYMENT_ENABLED", "True").lower() ==
 
 # Add these constants after your existing constants
 REQUIRED_CHANNEL = "@CashxByte"  # Main channel
-REQUIRED_PAYMENT_GROUP = os.environ.get("REQUIRED_PAYMENT_GROUP", "@livepayupdate")  # Payment group username
+REQUIRED_PAYMENT_GROUP = os.environ.get("REQUIRED_PAYMENT_GROUP", "@livepayupdates")  # Payment group username
 CHANNEL_INVITE_LINK = "https://t.me/CashxByte"  # Channel invite link
 PAYMENT_GROUP_INVITE_LINK = os.environ.get("PAYMENT_GROUP_INVITE_LINK", "https://t.me/livepayupdate")  # Group invite link
 
