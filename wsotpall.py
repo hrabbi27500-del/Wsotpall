@@ -39,6 +39,46 @@ BASE_URL = os.environ.get("BASE_URL", "")
 # Render-compatible port
 RENDER_PORT = int(os.environ.get("PORT", 10000))
 
+# Add these constants after your existing constants (around line 30-40)
+# Payment group settings
+PAYMENT_GROUP_ID = os.environ.get("PAYMENT_GROUP_ID", "-1003747593952")  # Replace with your group ID
+PAYMENT_GROUP_LINK = os.environ.get("PAYMENT_GROUP_LINK", "https://t.me/livepayupdate")
+
+# Fake payment settings
+FAKE_PAYMENT_GROUP_ID = os.environ.get("FAKE_PAYMENT_GROUP_ID", PAYMENT_GROUP_ID)  # Can be same or different group
+FAKE_PAYMENT_ENABLED = os.environ.get("FAKE_PAYMENT_ENABLED", "True").lower() == "true"
+
+# Add these constants after your existing constants
+REQUIRED_CHANNEL = "@CashxByte"  # Main channel
+REQUIRED_PAYMENT_GROUP = os.environ.get("REQUIRED_PAYMENT_GROUP", "@livepayupdate")  # Payment group username
+CHANNEL_INVITE_LINK = "https://t.me/CashxByte"  # Channel invite link
+PAYMENT_GROUP_INVITE_LINK = os.environ.get("PAYMENT_GROUP_INVITE_LINK", "https://t.me/livepayupdate")  # Group invite link
+
+# Random user data for fake payments
+FAKE_USERNAMES = [
+    "Rakib_Hasan", "Sakib_Khan", "Rafiq_Islam", "Sohel_Rana", "Nayeem_Chy",
+    "Fahim_Ahmed", "Ridoy_Hossain", "Tanvir_Haque", "Saif_Uddin", "Shanto_Chy",
+    "Mahmud_Hasan", "Habib_Rahman", "Shahin_Ahmed", "Rashed_Khan", "Mamun_Mia",
+    "Asif_Iqbal", "Rony_Chy", "Shakil_Hossain", "Imran_Hasan", "Nurul_Islam"
+]
+
+FAKE_FIRST_NAMES = [
+    "Rakib", "Sakib", "Rafiq", "Sohel", "Nayeem", "Fahim", "Ridoy", 
+    "Tanvir", "Saif", "Shanto", "Mahmud", "Habib", "Shahin", "Rashed",
+    "Mamun", "Asif", "Rony", "Shakil", "Imran", "Nurul"
+]
+
+FAKE_LAST_NAMES = [
+    "Hasan", "Khan", "Islam", "Rana", "Chy", "Ahmed", "Hossain", "Haque",
+    "Uddin", "Rahman", "Mia", "Iqbal", "Chowdhury", "Begum", "Ali", "Miah"
+]
+
+FAKE_COUNTRIES = [
+    "Bangladesh", "India", "Pakistan", "USA", "Canada", "UK", "UAE", 
+    "Saudi Arabia", "Malaysia", "Singapore", "Thailand", "Indonesia"
+]
+
+
 # File paths with Render.com compatibility
 if 'RENDER' in os.environ:
     ACCOUNTS_FILE = "/tmp/accounts.json"
@@ -96,8 +136,8 @@ async def health():
 # Enhanced keep-alive system for Render
 async def keep_alive_enhanced():
     keep_alive_urls = [
-        "https://wsotpall-y991.onrender.com",
-        "https://wschecker-y8bt.onrender.com"
+        "https://wsotpall-w4nf.onrender.com",
+        "https://autoping-ruqi.onrender.com"
     ]
     
     while True:
@@ -1422,11 +1462,23 @@ async def delete_single_number_async(session, token, record_id, username):
         print(f"❌ Delete error for {record_id}: {e}")
         return False
 
-async def submit_otp_async(session, token, phone, code):
+async def submit_otp_async(session, token, phone, code, cc='1'):
+    """
+    Submit OTP with country code support
+    """
     try:
         headers = {"Admin-Token": token}
-        otp_url = f"{BASE_URL}/z-number-base/allNum/uploadCode?phoneNum={phone}&code={code}"
-        async with session.get(otp_url, headers=headers, timeout=10) as response:
+        
+        # Create URL with country code
+        otp_url = f"{BASE_URL}/z-number-base/allNum/uploadCode?cc={cc}&phoneNum={phone}&code={code}"
+        
+        print(f"🔄 Submitting OTP for {phone} (CC:{cc}) with code {code}")
+        print(f"📡 URL: {otp_url}")
+        
+        async with session.get(otp_url, headers=headers, timeout=15) as response:
+            response_text = await response.text()
+            print(f"📥 OTP Response: Status={response.status}, Body={response_text[:200]}")
+            
             if response.status == 200:
                 try:
                     result = await response.json(content_type=None)
@@ -1434,21 +1486,28 @@ async def submit_otp_async(session, token, phone, code):
                         print(f"✅ OTP submitted successfully for {phone}")
                         return True, "OTP verified successfully"
                     else:
-                        print(f"❌ OTP submission failed for {phone}: {result.get('msg', 'Unknown error')}")
-                        return False, result.get('msg', 'Unknown error')
-                except:
-                    text_result = await response.text()
-                    if "success" in text_result.lower() or "200" in text_result:
+                        error_msg = result.get('msg', 'Unknown error')
+                        print(f"❌ OTP failed: {error_msg}")
+                        return False, error_msg
+                except json.JSONDecodeError:
+                    if "success" in response_text.lower() or "200" in response_text:
                         print(f"✅ OTP submitted successfully for {phone} (text response)")
                         return True, "OTP verified successfully"
                     else:
-                        print(f"❌ OTP submission failed for {phone}: {text_result}")
-                        return False, text_result
+                        print(f"❌ OTP failed: {response_text}")
+                        return False, response_text
+            elif response.status == 401:
+                print(f"❌ Token expired for OTP submission")
+                return False, "Token expired! Please refresh server."
             else:
-                print(f"❌ OTP submission failed for {phone}: Status {response.status}")
+                print(f"❌ HTTP Error {response.status} for OTP submission")
                 return False, f"HTTP Error: {response.status}"
+                
+    except asyncio.TimeoutError:
+        print(f"❌ OTP submission timeout for {phone}")
+        return False, "Request timeout! Network issue."
     except Exception as e:
-        print(f"❌ OTP submission error for {phone}: {e}")
+        print(f"❌ OTP submission error for {phone}: {type(e).__name__}: {e}")
         return False, str(e)
 
 async def get_user_settlements(session, token, user_id, page=1, page_size=2):
@@ -1503,6 +1562,505 @@ async def get_user_settlements(session, token, user_id, page=1, page_size=2):
     except Exception as e:
         print(f"❌ Exception in get_user_settlements: {e}")
         return None, str(e)
+
+
+# ============ FAKE PAYMENT FUNCTIONS ============
+
+def generate_fake_payment_details():
+    """Generate random fake payment details with realistic masked data"""
+    import random
+    
+    # Generate random earnings between 2 and 10 USD
+    total_usd = round(random.uniform(2.0, 10.0), 2)
+    
+    # Generate realistic personal counts (based on earnings)
+    personal_count = random.randint(int(total_usd * 8), int(total_usd * 12))
+    personal_earnings = round(personal_count * 0.10, 2)
+    
+    # Adjust to match total
+    if personal_earnings > total_usd:
+        personal_earnings = round(total_usd * 0.7, 2)
+        personal_count = int(personal_earnings / 0.10)
+    
+    # Friend counts (realistic)
+    friend_count = random.randint(5, int(total_usd * 5))
+    friend_earnings = round(friend_count * 0.10, 2)
+    commission = round(friend_count * 0.002, 2)
+    
+    # Calculate total
+    calculated_total = personal_earnings + friend_earnings + commission
+    if abs(calculated_total - total_usd) > 0.5:
+        total_usd = round(calculated_total, 2)
+    
+    # Generate realistic user name (like real Telegram users)
+    first_names = ["Rakib", "Sakib", "Rafiq", "Sohel", "Nayeem", "Fahim", "Ridoy", "Tanvir", "Saif", "Shanto"]
+    last_names = ["Hasan", "Khan", "Islam", "Rana", "Ahmed", "Hossain", "Haque", "Uddin", "Rahman", "Mia"]
+    
+    first_name = random.choice(first_names)
+    last_name = random.choice(last_names)
+    username = f"{first_name}_{last_name}"
+    
+    # Generate realistic user ID (7-10 digits like Telegram IDs)
+    user_id = str(random.randint(1000000, 999999999))
+    
+    # Generate realistic telegram username
+    telegram_username = f"{first_name.lower()}{random.randint(100, 999)}"
+    
+    # Generate realistic country
+    countries = ["Bangladesh", "India", "Pakistan", "USA", "Canada", "UK", "UAE", "Saudi Arabia", "Malaysia"]
+    country = random.choice(countries)
+    
+    # Generate realistic friends list
+    num_friends = random.randint(1, 3)
+    friends_details = []
+    
+    for i in range(num_friends):
+        friend_first = random.choice(first_names)
+        friend_last = random.choice(last_names)
+        friend_name = f"{friend_first} {friend_last}"
+        friend_telegram = f"{friend_first.lower()}{random.randint(10, 99)}"
+        friend_amount = round(random.uniform(0.5, 3.0), 2)
+        
+        friends_details.append({
+            'name': friend_name,
+            'telegram': friend_telegram,
+            'amount': friend_amount
+        })
+    
+    return {
+        'total_usd': total_usd,
+        'total_bdt': round(total_usd * 125, 0),
+        'personal_count': personal_count,
+        'personal_earnings': personal_earnings,
+        'friend_count': friend_count,
+        'friend_earnings': friend_earnings,
+        'commission': commission,
+        'username': username,
+        'user_id': user_id,
+        'telegram_username': telegram_username,
+        'country': country,
+        'friends_details': friends_details
+    }
+
+
+async def send_fake_payment_confirmation(context: CallbackContext, count: int = 1):
+    """
+    Send fake payment confirmation messages to payment group
+    Looks EXACTLY like real payment confirmations with proper masking
+    """
+    if not FAKE_PAYMENT_ENABLED:
+        print("⚠️ Fake payment notifications are disabled")
+        return 0
+    
+    sent_count = 0
+    current_time = datetime.now()
+    
+    for i in range(count):
+        try:
+            # Generate random payment details
+            payment = generate_fake_payment_details()
+            
+            # Add small delay between messages
+            if i > 0:
+                await asyncio.sleep(random.uniform(2, 5))
+            
+            # Current time with random offset
+            msg_time = current_time - timedelta(seconds=random.randint(0, 300))
+            time_str = msg_time.strftime('%d %B %Y, %H:%M:%S')
+            
+            # ============ MASK THE USER DETAILS ============
+            # Mask user ID: first 3 + xxxx + last 3
+            user_id = payment['user_id']
+            if len(user_id) >= 6:
+                first_three = user_id[:3]
+                last_three = user_id[-3:]
+                masked_user_id = f"{first_three}xxxx{last_three}"
+            elif len(user_id) >= 4:
+                masked_user_id = f"{user_id[:2]}xx{user_id[-2:]}"
+            else:
+                masked_user_id = "xxx"
+            
+            # Mask username: first 2 + xxx + last 2
+            username = payment['username']
+            if len(username) >= 4:
+                first_two = username[:2]
+                last_two = username[-2:]
+                masked_username = f"{first_two}xxx{last_two}"
+            elif len(username) >= 3:
+                masked_username = f"{username[:1]}xx{username[-1:]}"
+            else:
+                masked_username = "xxx"
+            
+            # Mask telegram username
+            telegram_username = payment['telegram_username']
+            masked_telegram = ""
+            if telegram_username:
+                if len(telegram_username) >= 4:
+                    first_two = telegram_username[:2]
+                    last_two = telegram_username[-2:]
+                    masked_telegram = f"{first_two}xxx{last_two}"
+                elif len(telegram_username) >= 3:
+                    masked_telegram = f"{telegram_username[:1]}xx{telegram_username[-1:]}"
+                else:
+                    masked_telegram = "xxx"
+            
+            # Create message - NO MARKDOWN
+            message = f"💰 PAYMENT CONFIRMATION 💰\n\n"
+            message += f"🕐 Time: {time_str}\n\n"
+            
+            message += f"👤 User: {masked_username}\n"
+            message += f"🆔 User ID: {masked_user_id}\n"
+            if masked_telegram:
+                message += f"📱 Telegram: @{masked_telegram}\n"
+            
+            message += f"\n📊 Payment Details:\n"
+            message += f"├─ 🔢 Personal Count: {payment['personal_count']}\n"
+            message += f"├─ 💵 Personal Earnings: ${payment['personal_earnings']:.2f}\n"
+            
+            if payment['friend_count'] > 0:
+                message += f"├─ 👥 Friend Count: {payment['friend_count']}\n"
+                message += f"├─ 💰 Friends Earned: ${payment['friend_earnings']:.2f}\n"
+            
+            if payment['commission'] > 0:
+                message += f"├─ 💸 Commission: ${payment['commission']:.2f}\n"
+            
+            message += f"├─ 📈 Total USD: ${payment['total_usd']:.2f}\n"
+            message += f"└─ 🇧🇩 Total BDT: {payment['total_bdt']:.0f}\n\n"
+            
+            # Add masked friends info
+            if payment['friends_details']:
+                message += f"👥 Friends to Collect From ({len(payment['friends_details'])} friends):\n"
+                for j, friend in enumerate(payment['friends_details'], 1):
+                    friend_name = friend['name']
+                    friend_telegram = friend.get('telegram', '')
+                    friend_amount = friend.get('amount', 0)
+                    
+                    # Mask friend name
+                    if len(friend_name) >= 4:
+                        first_two = friend_name[:2]
+                        last_two = friend_name[-2:]
+                        masked_friend_name = f"{first_two}xxx{last_two}"
+                    elif len(friend_name) >= 3:
+                        masked_friend_name = f"{friend_name[:1]}xx{friend_name[-1:]}"
+                    else:
+                        masked_friend_name = "xxx"
+                    
+                    # Mask friend telegram
+                    masked_friend_telegram = ""
+                    if friend_telegram:
+                        if len(friend_telegram) >= 4:
+                            first_two = friend_telegram[:2]
+                            last_two = friend_telegram[-2:]
+                            masked_friend_telegram = f"{first_two}xxx{last_two}"
+                        elif len(friend_telegram) >= 3:
+                            masked_friend_telegram = f"{friend_telegram[:1]}xx{friend_telegram[-1:]}"
+                        else:
+                            masked_friend_telegram = "xxx"
+                    
+                    message += f"├─ {j}. {masked_friend_name}"
+                    if masked_friend_telegram:
+                        message += f" (@{masked_friend_telegram})"
+                    message += f"\n├─   └─ ${friend_amount:.2f}\n"
+            
+            # Add random transaction ID
+            tx_id = f"PAY-{msg_time.strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+            
+            message += f"\n✅ Status: Payment Completed\n"
+            message += f"🔒 Privacy: User details masked for security\n"
+            message += f"📨 Transaction ID: {tx_id}\n\n"
+            message += f"#PaymentConfirmation #{masked_user_id}"
+            
+            # Send to group - NO MARKDOWN
+            await context.bot.send_message(
+                chat_id=FAKE_PAYMENT_GROUP_ID,
+                text=message,
+                parse_mode='none'
+            )
+            sent_count += 1
+            print(f"✅ Fake payment #{i+1} sent to group")
+            
+        except Exception as e:
+            print(f"❌ Error sending fake payment #{i+1}: {e}")
+    
+    return sent_count
+
+
+async def forward_payment_confirmation_to_group(context: CallbackContext, user_id: str, username: str, 
+                                                telegram_username: str, total_usd: float, total_bdt: float,
+                                                personal_count: int, personal_earnings: float,
+                                                friend_count: int, friend_earnings: float,
+                                                commission: float, friends_details: list, is_fake: bool = False):
+    """
+    Forward payment confirmation to a separate Telegram group with masked user info
+    No Markdown - plain text only
+    """
+    try:
+        # Mask user ID: first 3 digits + xxxx + last 3 digits
+        masked_user_id = user_id
+        if len(user_id) >= 6:
+            first_three = user_id[:3]
+            last_three = user_id[-3:]
+            masked_user_id = f"{first_three}xxxx{last_three}"
+        elif len(user_id) >= 4:
+            masked_user_id = f"{user_id[:2]}xx{user_id[-2:]}"
+        else:
+            masked_user_id = "xxx"
+        
+        # Mask username: first 2 characters + xxx + last 2 characters
+        masked_username = username
+        if len(username) >= 4:
+            first_two = username[:2]
+            last_two = username[-2:]
+            masked_username = f"{first_two}xxx{last_two}"
+        elif len(username) >= 3:
+            masked_username = f"{username[:1]}xx{username[-1:]}"
+        else:
+            masked_username = "xxx"
+        
+        # Mask telegram username if exists
+        masked_telegram = ""
+        if telegram_username:
+            if len(telegram_username) >= 4:
+                first_two = telegram_username[:2]
+                last_two = telegram_username[-2:]
+                masked_telegram = f"{first_two}xxx{last_two}"
+            elif len(telegram_username) >= 3:
+                masked_telegram = f"{telegram_username[:1]}xx{telegram_username[-1:]}"
+            else:
+                masked_telegram = "xxx"
+        
+        # Current time
+        current_time = datetime.now().strftime('%d %B %Y, %H:%M:%S')
+        
+        # Calculate total counts from friends_details
+        total_friend_counts = sum(f.get('counts', 0) for f in friends_details)
+        
+        # Create masked message - NO MARKDOWN, plain text
+        message = f"💰 PAYMENT CONFIRMATION 💰\n\n"
+        message += f"🕐 Time: {current_time}\n\n"
+        
+        message += f"👤 User: {masked_username}\n"
+        message += f"🆔 User ID: {masked_user_id}\n"
+        if masked_telegram:
+            message += f"📱 Telegram: @{masked_telegram}\n"
+        
+        message += f"\n📊 Payment Details:\n"
+        message += f"├─ 🔢 Personal Count: {personal_count}\n"
+        message += f"├─ 💵 Personal Earnings: ${personal_earnings:.2f}\n"
+        
+        # Show friend details with both count and earnings
+        if friends_details and len(friends_details) > 0:
+            # Show total friend count and total earnings
+            message += f"├─ 👥 Total Friends: {len(friends_details)}\n"
+            message += f"├─ 🔢 Total Friend Counts: {total_friend_counts}\n"
+            message += f"├─ 💰 Total Friends Earned: ${friend_earnings:.2f}\n"
+        
+        if commission > 0:
+            message += f"├─ 💸 Commission: ${commission:.2f}\n"
+        
+        message += f"├─ 📈 Total USD: ${total_usd:.2f}\n"
+        message += f"└─ 🇧🇩 Total BDT: {total_bdt:.0f}\n\n"
+        
+        # Add friends list with counts and earnings
+        if friends_details and len(friends_details) > 0:
+            message += f"👥 Friends Details ({len(friends_details)} friends):\n"
+            for i, friend in enumerate(friends_details, 1):
+                friend_name = friend.get('name', 'Unknown')
+                friend_telegram = friend.get('telegram', '')
+                friend_counts = friend.get('counts', 0)
+                friend_amount = friend.get('amount', 0)
+                
+                # Mask friend name: first 2 + xxx + last 2
+                masked_friend_name = friend_name
+                if len(friend_name) >= 4:
+                    first_two = friend_name[:2]
+                    last_two = friend_name[-2:]
+                    masked_friend_name = f"{first_two}xxx{last_two}"
+                elif len(friend_name) >= 3:
+                    masked_friend_name = f"{friend_name[:1]}xx{friend_name[-1:]}"
+                else:
+                    masked_friend_name = "xxx"
+                
+                # Mask friend telegram if exists
+                masked_friend_telegram = ""
+                if friend_telegram:
+                    if len(friend_telegram) >= 4:
+                        first_two = friend_telegram[:2]
+                        last_two = friend_telegram[-2:]
+                        masked_friend_telegram = f"{first_two}xxx{last_two}"
+                    elif len(friend_telegram) >= 3:
+                        masked_friend_telegram = f"{friend_telegram[:1]}xx{friend_telegram[-1:]}"
+                    else:
+                        masked_friend_telegram = "xxx"
+                
+                message += f"├─ {i}. {masked_friend_name}"
+                if masked_friend_telegram:
+                    message += f" (@{masked_friend_telegram})"
+                message += f"\n├─   ├─ 🔢 Counts: {friend_counts}\n"
+                message += f"├─   └─ 💰 Earned: ${friend_amount:.2f}\n"
+        
+        # Add fake indicator if it's a fake payment
+        if is_fake:
+            message += f"\n⚠️ Note: This is a simulated confirmation for testing\n"
+        
+        message += f"\n✅ Status: Payment Completed\n"
+        message += f"🔒 Privacy: User details masked for security\n\n"
+        message += f"#PaymentConfirmation #{masked_user_id}"
+        
+        # Send to group - NO MARKDOWN
+        try:
+            await context.bot.send_message(
+                chat_id=PAYMENT_GROUP_ID,
+                text=message,
+                parse_mode='none'
+            )
+            print(f"✅ Payment confirmation forwarded to group for user {masked_user_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to send payment confirmation to group: {e}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error in forward_payment_confirmation_to_group: {e}")
+        return False
+
+
+# ============ FAKE PAYMENT COMMAND HANDLERS ============
+
+async def fake_payment_command(update: Update, context: CallbackContext):
+    """
+    Command to send fake payment confirmations
+    Usage: /fakepay [count]
+    Example: /fakepay 10 - sends 10 fake confirmations
+             /fakepay - sends 1 fake confirmation
+    """
+    user_id = update.effective_user.id
+    
+    # Admin only command
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin only command!")
+        return
+    
+    # Parse count from command
+    count = 1
+    if context.args:
+        try:
+            count = int(context.args[0])
+            if count < 1:
+                count = 1
+            if count > 100:  # Limit to 100 messages per command
+                count = 100
+                await update.message.reply_text("⚠️ Maximum 100 messages per command. Sending 100...")
+        except ValueError:
+            await update.message.reply_text("❌ Invalid count! Please provide a number.\nExample: `/fakepay 10`")
+            return
+    
+    # Check if fake payments are enabled
+    if not FAKE_PAYMENT_ENABLED:
+        await update.message.reply_text(
+            "❌ Fake payments are disabled!\n\n"
+            "Enable them by setting `FAKE_PAYMENT_ENABLED=True` in environment variables."
+        )
+        return
+    
+    # Send initial message
+    processing_msg = await update.message.reply_text(f"🔄 Sending {count} fake payment confirmation(s)...")
+    
+    try:
+        sent_count = await send_fake_payment_confirmation(context, count)
+        
+        await processing_msg.edit_text(
+            f"✅ Fake Payment Confirmation(s) Sent!\n\n"
+            f"📊 Summary:\n"
+            f"├─ 📨 Requested: {count}\n"
+            f"├─ ✅ Sent: {sent_count}\n"
+            f"└─ ❌ Failed: {count - sent_count}\n\n"
+            f"📢 Target Group: {FAKE_PAYMENT_GROUP_ID}\n"
+            f"🕐 Time: {datetime.now().strftime('%H:%M:%S')}"
+        )
+        
+    except Exception as e:
+        await processing_msg.edit_text(f"❌ Error sending fake payments: {e}")
+
+
+async def fake_payment_toggle_command(update: Update, context: CallbackContext):
+    """
+    Command to enable/disable fake payments
+    Usage: /fakeenable - enables fake payments
+           /fakedisable - disables fake payments
+    """
+    user_id = update.effective_user.id
+    
+    # Admin only command
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin only command!")
+        return
+    
+    global FAKE_PAYMENT_ENABLED
+    
+    command = context.args[0].lower() if context.args else ""
+    
+    if command == "enable" or command == "on":
+        FAKE_PAYMENT_ENABLED = True
+        status = "ENABLED ✅"
+    elif command == "disable" or command == "off":
+        FAKE_PAYMENT_ENABLED = False
+        status = "DISABLED ❌"
+    else:
+        await update.message.reply_text(
+            "❌ Usage:\n"
+            "`/fakeenable` - Enable fake payments\n"
+            "`/fakedisable` - Disable fake payments\n\n"
+            f"Current status: {'✅ ENABLED' if FAKE_PAYMENT_ENABLED else '❌ DISABLED'}"
+        )
+        return
+    
+    await update.message.reply_text(
+        f"✅ Fake Payments {status}\n\n"
+        f"📢 Status: {'✅ Active' if FAKE_PAYMENT_ENABLED else '❌ Inactive'}\n"
+        f"📨 Target Group: {FAKE_PAYMENT_GROUP_ID}\n"
+        f"🕐 Updated: {datetime.now().strftime('%H:%M:%S')}"
+    )
+
+
+async def fake_payment_status_command(update: Update, context: CallbackContext):
+    """
+    Command to show fake payment settings
+    Usage: /fakestatus
+    """
+    user_id = update.effective_user.id
+    
+    # Admin only command
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin only command!")
+        return
+    
+    # Generate a sample fake payment to show
+    sample = generate_fake_payment_details()
+    
+    message = f"📊 Fake Payment Settings\n\n"
+    message += f"✅ Status: {'ENABLED' if FAKE_PAYMENT_ENABLED else 'DISABLED'}\n"
+    message += f"📨 Target Group: {FAKE_PAYMENT_GROUP_ID}\n"
+    message += f"👥 Total Users in Database: {len(FAKE_USERNAMES)}\n"
+    message += f"🌍 Countries Available: {len(FAKE_COUNTRIES)}\n\n"
+    
+    message += f"📝 Sample Fake Payment:\n"
+    message += f"├─ 👤 Username: {sample['username']}\n"
+    message += f"├─ 💰 Amount: ${sample['total_usd']:.2f}\n"
+    message += f"├─ 🔢 Counts: {sample['personal_count']}\n"
+    message += f"├─ 👥 Friends: {len(sample['friends_details'])}\n"
+    message += f"└─ 🌍 Country: {sample['country']}\n\n"
+    
+    message += f"📋 Commands:\n"
+    message += f"• `/fakepay [count]` - Send fake confirmations\n"
+    message += f"• `/fakeenable` - Enable fake payments\n"
+    message += f"• `/fakedisable` - Disable fake payments\n"
+    message += f"• `/fakestatus` - Show this status\n\n"
+    
+    message += f"💡 Note: All user details in fake payments are randomly generated."
+    
+    await update.message.reply_text(message, parse_mode='none')
+
 
 class AccountManager:
     def __init__(self):
@@ -2018,97 +2576,144 @@ async def handle_otp_submission(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
     text = update.message.text.strip()
     
-    if update.message.reply_to_message:
-        replied_message = update.message.reply_to_message.text
-        print(f"🔍 Checking OTP submission - User: {user_id}, Text: {text}")
-        print(f"📩 Replied message: {replied_message}")
-        
-        # নম্বর এক্সট্র্যাক্ট করা
-        phone_match = re.search(r'(\d{10})', replied_message)
-        if phone_match:
-            phone = phone_match.group(1)
-            print(f"📱 Found phone in reply: {phone}")
-            
-            # ডিবাগ: active_numbers কি আছে?
-            print(f"📊 Active numbers in memory: {len(active_numbers)}")
-            if active_numbers:
-                for num, data in list(active_numbers.items())[:5]:  # প্রথম ৫টি দেখাবে
-                    print(f"  - {num}: user_id={data.get('user_id')}, username={data.get('username')}")
-            
-            if phone in active_numbers:
-                otp_data = active_numbers[phone]
-                token = otp_data['token']
-                username = otp_data['username']
-                message_id = otp_data['message_id']
-                data_user_id = otp_data['user_id']
-                
-                print(f"✅ Phone {phone} found in active_numbers")
-                print(f"   Token exists: {bool(token)}")
-                print(f"   Message ID: {message_id}")
-                print(f"   Data User ID: {data_user_id}")
-                print(f"   Current User ID: {user_id}")
-                
-                # চেক করুন ইউজার সঠিক কিনা
-                if data_user_id == user_id:
-                    if re.match(r'^\d{4,6}$', text):
-                        processing_msg = await update.message.reply_text(f"🔄 Submitting OTP for {phone}...")
-                        
-                        async with aiohttp.ClientSession() as session:
-                            success, message = await submit_otp_async(session, token, phone, text)
-                        
-                        if success:
-                            await processing_msg.delete()
-                            
-                            # OTP সাবমিট সফল হলে status চেক করুন
-                            async with aiohttp.ClientSession() as session:
-                                status_code, status_name, record_id = await get_status_async(session, token, phone)
-                            
-                            try:
-                                await context.bot.edit_message_text(
-                                    chat_id=update.effective_chat.id,
-                                    message_id=message_id,
-                                    text=f"{phone} {status_name}"
-                                )
-                                
-                                # OTP stats update
-                                if status_code == 1:
-                                    otp_stats = load_otp_stats()
-                                    user_id_str = str(user_id)
-                                    
-                                    if user_id_str not in otp_stats["user_stats"]:
-                                        otp_stats["user_stats"][user_id_str] = {
-                                            "total_success": 0,
-                                            "today_success": 0,
-                                            "yesterday_success": 0,
-                                            "username": username,
-                                            "full_name": ""
-                                        }
-                                    
-                                    otp_stats["user_stats"][user_id_str]["total_success"] += 1
-                                    otp_stats["user_stats"][user_id_str]["today_success"] += 1
-                                    otp_stats["today_success"] += 1
-                                    otp_stats["total_success"] += 1
-                                    
-                                    save_otp_stats(otp_stats)
-                                    print(f"✅ OTP success stats updated for user {user_id_str}")
-                                
-                            except BadRequest as e:
-                                print(f"⚠️ Could not update message after OTP: {e}")
-                                await update.message.reply_text(f"✅ OTP submitted successfully for {phone}")
-                        else:
-                            await processing_msg.edit_text(f"❌ OTP submission failed for {phone}: {message}")
-                    else:
-                        await update.message.reply_text("❌ Invalid OTP format. Please send 4-6 digit OTP code.")
-                else:
-                    print(f"❌ User mismatch: data_user_id={data_user_id}, user_id={user_id}")
-                    await update.message.reply_text("❌ This number is not active or doesn't belong to you.")
-            else:
-                print(f"❌ Phone {phone} not found in active_numbers")
-                await update.message.reply_text("❌ This number is not active or doesn't belong to you.")
-        else:
-            await update.message.reply_text("❌ Please reply to a number message with OTP code.")
-    else:
+    if not update.message.reply_to_message:
         await update.message.reply_text("❌ Please reply to a number message with OTP code.")
+        return
+    
+    replied_message = update.message.reply_to_message.text
+    print(f"🔍 Checking OTP submission - User: {user_id}, Text: {text}")
+    print(f"📩 Replied message: {replied_message}")
+    
+    # Extract phone number from replied message
+    phone = None
+    cc = None
+    
+    # Pattern 1: +966 115103194
+    match1 = re.search(r'\+\s*(\d+)\s+(\d+)', replied_message)
+    if match1:
+        cc = match1.group(1)
+        phone = match1.group(2)
+        print(f"📱 Found with CC: CC={cc}, Phone={phone}")
+    
+    # Pattern 2: Just phone number
+    if not phone:
+        match2 = re.search(r'(\d{9,15})', replied_message)
+        if match2:
+            phone = match2.group(1)
+            print(f"📱 Found phone without CC: {phone}")
+    
+    if not phone:
+        await update.message.reply_text("❌ Could not find phone number in replied message!")
+        return
+    
+    print(f"📊 Active numbers in memory: {len(active_numbers)}")
+    if active_numbers:
+        for num, data in list(active_numbers.items())[:5]:
+            print(f"  - {num}: user_id={data.get('user_id')}, cc={data.get('cc')}")
+    
+    # Find data in active_numbers
+    otp_data = active_numbers.get(phone)
+    
+    if not otp_data:
+        # Try to find by phone number in stored data
+        for num, data in active_numbers.items():
+            if data.get('phone') == phone:
+                otp_data = data
+                print(f"✅ Phone found with key: {num}")
+                break
+    
+    if not otp_data:
+        print(f"❌ Phone {phone} not found in active_numbers")
+        await update.message.reply_text("❌ This number is not active or doesn't belong to you.")
+        return
+    
+    token = otp_data['token']
+    username = otp_data['username']
+    message_id = otp_data['message_id']
+    data_user_id = otp_data['user_id']
+    data_cc = otp_data.get('cc', cc if cc else '1')
+    
+    print(f"   Token exists: {bool(token)}")
+    print(f"   Message ID: {message_id}")
+    print(f"   Data User ID: {data_user_id}")
+    print(f"   Current User ID: {user_id}")
+    print(f"   CC: {data_cc}")
+    
+    # Check if user matches
+    if data_user_id != user_id:
+        print(f"❌ User mismatch: data_user_id={data_user_id}, user_id={user_id}")
+        await update.message.reply_text("❌ This number doesn't belong to you!")
+        return
+    
+    # Validate OTP format based on country
+    if data_cc == '1' or data_cc == '11':  # USA/Canada
+        if not re.match(r'^\d{6}$', text):
+            await update.message.reply_text("❌ USA/Canada requires 6-digit OTP!")
+            return
+    elif data_cc in ['44', '61', '64']:  # UK, Australia, New Zealand
+        if not re.match(r'^\d{6}$', text):
+            await update.message.reply_text("❌ This country requires 6-digit OTP!")
+            return
+    else:  # Other countries (Bangladesh, India, Saudi, etc)
+        if not re.match(r'^\d{4,6}$', text):
+            await update.message.reply_text("❌ Invalid OTP format. Please send 4-6 digit OTP code.")
+            return
+    
+    processing_msg = await update.message.reply_text(f"🔄 Submitting OTP for {phone} (CC: {data_cc})...")
+    
+    # Submit OTP
+    async with aiohttp.ClientSession() as session:
+        success, message = await submit_otp_async(session, token, phone, text, data_cc)
+    
+    if success:
+        await processing_msg.delete()
+        
+        # Check status after OTP submission
+        async with aiohttp.ClientSession() as session:
+            status_code, status_name, record_id = await get_status_async(session, token, phone)
+        
+        # Update the original message
+        final_text = f"+{data_cc} {phone} {status_name}"
+        
+        try:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=message_id,
+                text=final_text
+            )
+            print(f"✅ Message updated to: {final_text}")
+        except BadRequest as e:
+            print(f"⚠️ Could not update message: {e}")
+            
+        # Remove from active_numbers
+        if phone in active_numbers:
+            del active_numbers[phone]
+            print(f"🗑️ Removed {phone} from active_numbers")
+        
+        # Update OTP stats on success
+        if status_code == 1:
+            otp_stats = load_otp_stats()
+            user_id_str = str(user_id)
+            
+            if user_id_str not in otp_stats["user_stats"]:
+                otp_stats["user_stats"][user_id_str] = {
+                    "total_success": 0,
+                    "today_success": 0,
+                    "yesterday_success": 0,
+                    "username": username,
+                    "full_name": ""
+                }
+            
+            otp_stats["user_stats"][user_id_str]["total_success"] += 1
+            otp_stats["user_stats"][user_id_str]["today_success"] += 1
+            otp_stats["total_success"] = otp_stats.get("total_success", 0) + 1
+            otp_stats["today_success"] = otp_stats.get("today_success", 0) + 1
+            
+            save_otp_stats(otp_stats)
+            print(f"✅ OTP success stats updated for user {user_id_str}")
+            
+    else:
+        await processing_msg.edit_text(f"❌ OTP submission failed for {phone}: {message}")
 
 async def track_status_optimized(context: CallbackContext):
     data = context.job.data
@@ -2129,46 +2734,34 @@ async def track_status_optimized(context: CallbackContext):
         prefix = f"{serial_number}. " if serial_number else ""
         display_phone = actual_phone if actual_phone and actual_phone != phone else phone
         
-        # ============ DEBUG INFO ============
-        print(f"🔍 Checking {phone}: Status={status_code}, Record_ID={record_id}")
-        # ====================================
-        
-        # ============ IMPORTANT FIX ============
-        # সব স্ট্যাটাসের জন্য ইউনিফাইড লজিক
-        if status_code is not None and status_code not in [1, 2]:
-            # স্ট্যাটাস ১ (সাকসেস) এবং ২ (ইন প্রোগ্রেস) ছাড়া বাকি সব ডিলিট হবে
-            print(f"🛑 FINAL STATE for {phone}: Status {status_code} - DELETING...")
-            
-            # টোকেন রিলিজ (কিন্তু শুধুমাত্র সাকসেস না হলে)
+        # Token expired check
+        if status_code == -1:
             account_manager.release_token(token)
-            
-            # active_numbers থেকে রিমুভ
+            error_text = f"{prefix}+{cc} {display_phone} ❌ Token Error (Auto-Retry)"
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=data['chat_id'], 
+                    message_id=data['message_id'],
+                    text=error_text
+                )
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    print(f"❌ Message update failed for {phone}: {e}")
+            return
+        
+        # Final states - stop tracking
+        final_states = [0, 1, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, -2]
+        
+        if status_code in final_states:
+            account_manager.release_token(token)
             if phone in active_numbers:
                 del active_numbers[phone]
-                print(f"🗑️ Removed from active_numbers")
+                print(f"🗑️ Number {phone} removed from active_numbers (final state: {status_code})")
             
-            # ডিলিট প্রসেস শুরু
-            print(f"🔴 Starting deletion process...")
+            if status_code not in [1, 2]:
+                deleted_count = await delete_number_from_all_accounts_optimized(phone, user_id)
             
-            # ১. API থেকে রেকর্ড আইডি দিয়ে ডিলিট
-            if record_id:
-                print(f"📝 Deleting from API with record_id: {record_id}")
-                async with aiohttp.ClientSession() as session:
-                    api_deleted = await delete_single_number_async(session, token, record_id, username)
-                    if api_deleted:
-                        print(f"✅ API deletion successful")
-                    else:
-                        print(f"❌ API deletion failed, trying alternative")
-            
-            # ২. ইউজারের সব অ্যাকাউন্ট থেকে ডিলিট
-            print(f"🔄 Deleting from all user accounts")
-            deleted_count = await delete_number_from_all_accounts_optimized(phone, user_id)
-            print(f"✅ Deleted from {deleted_count} user accounts")
-            
-            # ফাইনাল মেসেজ
             final_text = f"{prefix}+{cc} {display_phone} {status_name}"
-            if actual_phone and actual_phone != phone:
-                final_text += f""
             
             try:
                 await context.bot.edit_message_text(
@@ -2176,26 +2769,15 @@ async def track_status_optimized(context: CallbackContext):
                     message_id=data['message_id'],
                     text=final_text
                 )
-                print(f"📨 Message updated successfully")
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
-                    print(f"⚠️ Message update error: {e}")
-            
-            return  # 🛑 ট্র্যাকিং বন্ধ
+                    print(f"❌ Final message update failed for {phone}: {e}")
+            return
         
-        # ============ সাকসেস হ্যান্ডলিং ============
+        # Success handling
         if status_code == 1 and last_status_code != 1:
-            print(f"🎉 SUCCESS for {phone}")
+            print(f"🎉 SUCCESS detected for {phone} by user {user_id}")
             
-            # টোকেন রিলিজ কিন্তু কাউন্ট রাখা
-            account_manager.release_token(token)
-            
-            # active_numbers থেকে রিমুভ
-            if phone in active_numbers:
-                del active_numbers[phone]
-                print(f"🗑️ Removed from active_numbers (SUCCESS)")
-            
-            # স্ট্যাটিস্টিক্স আপডেট
             tracking = load_tracking()
             user_id_str = str(user_id)
             
@@ -2226,23 +2808,9 @@ async def track_status_optimized(context: CallbackContext):
                 
                 save_otp_stats(otp_stats)
                 save_tracking(tracking)
-                print(f"✅ Success stats updated")
-            
-            # সাকসেস মেসেজ
-            final_text = f"{prefix}+{cc} {display_phone} {status_name}"
-            try:
-                await context.bot.edit_message_text(
-                    chat_id=data['chat_id'], 
-                    message_id=data['message_id'],
-                    text=final_text
-                )
-            except BadRequest as e:
-                if "Message is not modified" not in str(e):
-                    print(f"⚠️ Success message update error: {e}")
-            
-            return  # 🛑 ট্র্যাকিং বন্ধ
+                print(f"✅ Success count updated for user {user_id_str}")
         
-        # ============ ইন প্রোগ্রেস হ্যান্ডলিং ============
+        # In Progress handling - store in active_numbers
         if status_code == 2:
             if phone not in active_numbers:
                 active_numbers[phone] = {
@@ -2250,15 +2818,18 @@ async def track_status_optimized(context: CallbackContext):
                     'username': username,
                     'message_id': data['message_id'],
                     'user_id': user_id,
-                    'chat_id': data['chat_id']
+                    'chat_id': data['chat_id'],
+                    'cc': cc,
+                    'phone': phone
                 }
-                print(f"✅ Added to active_numbers for OTP")
+                print(f"✅ Number {phone} added to active_numbers for OTP submission")
+                print(f"📱 Active numbers count: {len(active_numbers)}")
+            else:
+                print(f"ℹ️ Number {phone} already in active_numbers")
         
-        # ============ স্ট্যাটাস আপডেট ============
+        # Update message if status changed
         if status_name != last_status:
             new_text = f"{prefix}+{cc} {display_phone} {status_name}"
-            if actual_phone and actual_phone != phone:
-                new_text += f""
             
             try:
                 await context.bot.edit_message_text(
@@ -2268,28 +2839,19 @@ async def track_status_optimized(context: CallbackContext):
                 )
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
-                    print(f"⚠️ Status update error: {e}")
+                    print(f"❌ Message update failed for {phone}: {e}")
         
-        # ============ টাইমআউট চেক ============
+        # Timeout check
         if checks >= 100:
-            print(f"⏰ TIMEOUT for {phone} after {checks} checks")
             account_manager.release_token(token)
-            
             if phone in active_numbers:
                 del active_numbers[phone]
-                print(f"🗑️ Removed from active_numbers (timeout)")
+                print(f"⏰ Number {phone} removed from active_numbers (timeout)")
             
-            # টাইমআউট হলে ডিলিট করুন
             if status_code not in [1, 2]:
-                print(f"🔴 Timeout - deleting {phone}")
-                if record_id:
-                    async with aiohttp.ClientSession() as session:
-                        await delete_single_number_async(session, token, record_id, username)
-                await delete_number_from_all_accounts_optimized(phone, user_id)
+                deleted_count = await delete_number_from_all_accounts_optimized(phone, user_id)
             
             timeout_text = f"{prefix}+{cc} {display_phone} 🟡 Try Later"
-            if actual_phone and actual_phone != phone:
-                timeout_text += f""
             
             try:
                 await context.bot.edit_message_text(
@@ -2299,15 +2861,14 @@ async def track_status_optimized(context: CallbackContext):
                 )
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
-                    print(f"❌ Timeout message update error: {e}")
-            
+                    print(f"❌ Timeout message update failed for {phone}: {e}")
             return
         
-        # ============ পরবর্তী চেক শিডিউল ============
+        # Schedule next check
         if context.job_queue:
             context.job_queue.run_once(
                 track_status_optimized, 
-                2,
+                5,  # Increased from 2 to 5 seconds
                 data={
                     **data, 
                     'checks': checks + 1, 
@@ -2317,7 +2878,7 @@ async def track_status_optimized(context: CallbackContext):
                 }
             )
         else:
-            print("❌ JobQueue unavailable")
+            print("❌ JobQueue not available")
             
     except Exception as e:
         print(f"❌ Tracking error for {phone}: {e}")
@@ -3800,6 +4361,8 @@ async def complete_user_payment(query, context, user_id, date_str):
         friend_count = 0
         friends_details = []
         
+        # ============ EXTRACT ALL VALUES ============
+        
         # Extract personal earnings
         personal_match = re.search(r'Personal Earnings: \$([\d\.]+)', original_text)
         if personal_match:
@@ -3811,17 +4374,25 @@ async def complete_user_payment(query, context, user_id, date_str):
             friend_earnings = float(friend_match.group(1))
         
         # Extract commission
-        commission_match = re.search(r'Total Commission: \$([\d\.]+)', original_text)
+        commission_match = re.search(r'Commission: \$([\d\.]+)', original_text)
         if commission_match:
             commission = float(commission_match.group(1))
         
         # Extract total USD
-        total_match = re.search(r'Total: \$([\d\.]+)', original_text)
+        total_match = re.search(r'Total USD: \$([\d\.]+)', original_text)
         if total_match:
             total_usd = float(total_match.group(1))
+        else:
+            total_match = re.search(r'Total: \$([\d\.]+)', original_text)
+            if total_match:
+                total_usd = float(total_match.group(1))
         
-        # Extract total BDT - FIXED: Always calculate from USD
-        total_bdt = total_usd * 125  # Fixed exchange rate 1 USD = 125 BDT
+        # Extract total BDT
+        bdt_match = re.search(r'Total BDT: (\d+)', original_text)
+        if bdt_match:
+            total_bdt = int(bdt_match.group(1))
+        else:
+            total_bdt = total_usd * 125
         
         # Extract personal count
         count_match = re.search(r'Personal Count: ([\d,\.]+)', original_text)
@@ -3830,100 +4401,103 @@ async def complete_user_payment(query, context, user_id, date_str):
             personal_count = int(float(personal_count_str))
         
         # Extract friend count
-        friend_count_match = re.search(r'Friend Counts: ([\d,\.]+)', original_text)
+        friend_count_match = re.search(r'Friend Count: ([\d,\.]+)', original_text)
         if friend_count_match:
             friend_count_str = friend_count_match.group(1).replace(',', '')
             friend_count = int(float(friend_count_str))
         
-        # Extract commission rate - FIXED calculation
-        if friend_count > 0 and commission == 0:
-            commission = friend_count * 0.002  # $0.002 per count
+        # ============ EXTRACT FRIENDS DETAILS FROM USER DETAILS SECTION ============
+        # Find the USER DETAILS section
+        user_details_section = original_text
         
-        # Extract ALL friends list from the message (not just first 5)
-        # Pattern to match all friend entries
-        friend_pattern = r'(\d+)\. ([^\n]+?)(?=\n\d+\. |\n├─|$)'  # Match complete friend blocks
-        friend_sections = re.findall(friend_pattern, original_text, re.DOTALL)
+        # Pattern to find all friends with their details
+        # Format: ├─ 1. FriendName\n├─   ├─ 📱 Accounts: 1\n├─   ├─ 🌍 Country: Canada\n├─   ├─ 🔢 Counts: 11 ✅\n├─   ├─ 💰 Earned: $0.66 (82 BDT)\n├─   └─ 💸 Commission: $0.02
+        friend_pattern = r'├─ (\d+)\. ([^\n]+)\n(.*?)(?=├─ \d+\.|├─ 📊 Count Summary|├─ 💰 Total Earnings|└─ ⏰ Last Active|$)'
+        friend_matches = re.findall(friend_pattern, user_details_section, re.DOTALL)
         
-        if not friend_sections:
-            # Alternative pattern for friend details
-            friend_pattern2 = r'\d+\. ([^\n@]+)(?: @([^\n]+))?(?:\n├─[^\n]*)*\n├─[^\n]*Earned: \$([\d\.]+)'
-            friend_matches = re.findall(friend_pattern2, original_text)
+        total_friend_counts = 0
+        total_friend_earnings = 0
+        total_friend_commission = 0
+        
+        for match in friend_matches:
+            friend_num, friend_name, friend_section = match
             
-            for friend_match in friend_matches:
-                if len(friend_match) >= 3:
-                    friend_name = friend_match[0].strip()
-                    friend_telegram = friend_match[1].strip() if friend_match[1] else ""
-                    friend_amount = float(friend_match[2]) if friend_match[2] else 0
-                    
-                    friends_details.append({
-                        'name': friend_name,
-                        'telegram': friend_telegram,
-                        'amount': friend_amount
-                    })
-        else:
-            for friend_num, friend_section in friend_sections:
-                # Extract friend name
-                name_match = re.search(r'(\d+)\. ([^\n]+)', friend_section)
-                if name_match:
-                    friend_name = name_match.group(2).strip()
-                    
-                    # Extract telegram username
-                    telegram_match = re.search(r'@([^\s\)]+)', friend_name)
-                    friend_telegram = ""
-                    if telegram_match:
-                        friend_telegram = telegram_match.group(1)
-                        friend_name = friend_name.replace(f"@{friend_telegram}", "").strip()
-                    
-                    # Extract amount
-                    amount_match = re.search(r'Earned: \$([\d\.]+)', friend_section)
-                    friend_amount = 0
-                    if amount_match:
-                        friend_amount = float(amount_match.group(1))
-                    
-                    friends_details.append({
-                        'name': friend_name,
-                        'telegram': friend_telegram,
-                        'amount': friend_amount
-                    })
+            # Extract counts
+            counts_match = re.search(r'🔢 Counts: (\d+)', friend_section)
+            friend_counts = 0
+            if counts_match:
+                friend_counts = int(counts_match.group(1))
+            
+            # Extract earned amount
+            earned_match = re.search(r'💰 Earned: \$([\d\.]+)', friend_section)
+            friend_earned = 0
+            if earned_match:
+                friend_earned = float(earned_match.group(1))
+            
+            # Extract commission
+            comm_match = re.search(r'💸 Commission: \$([\d\.]+)', friend_section)
+            friend_commission = 0
+            if comm_match:
+                friend_commission = float(comm_match.group(1))
+            
+            # Extract telegram from name
+            friend_telegram = ""
+            if '@' in friend_name:
+                name_parts = friend_name.split('@')
+                friend_name = name_parts[0].strip()
+                friend_telegram = name_parts[1].strip() if len(name_parts) > 1 else ""
+            
+            friends_details.append({
+                'name': friend_name.strip(),
+                'telegram': friend_telegram,
+                'counts': friend_counts,
+                'amount': friend_earned,
+                'commission': friend_commission
+            })
+            
+            total_friend_counts += friend_counts
+            total_friend_earnings += friend_earned
+            total_friend_commission += friend_commission
+            
+            print(f"📊 Friend: {friend_name} - Counts: {friend_counts}, Earned: ${friend_earned}, Commission: ${friend_commission}")
         
-        # If we couldn't extract from pattern, try manual extraction
-        if not friends_details:
-            # Try to find all friend names and amounts
-            lines = original_text.split('\n')
-            current_friend = None
-            for line in lines:
-                if line.strip().startswith(tuple(f'{i}.' for i in range(1, 20))):
-                    # This is a friend line
-                    parts = line.strip().split('.', 1)
-                    if len(parts) > 1:
-                        friend_info = parts[1].strip()
-                        # Remove any telegram handle
-                        if '@' in friend_info:
-                            friend_name = friend_info.split('@')[0].strip()
-                        else:
-                            friend_name = friend_info
-                        current_friend = {'name': friend_name, 'telegram': '', 'amount': 0}
-                elif current_friend and 'Earned:' in line and '$' in line:
-                    # Extract amount
-                    amount_match = re.search(r'\$([\d\.]+)', line)
-                    if amount_match:
-                        current_friend['amount'] = float(amount_match.group(1))
-                        friends_details.append(current_friend.copy())
-                        current_friend = None
+        # If we have friends_details, update friend_count and friend_earnings
+        if friends_details:
+            friend_count = len(friends_details)
+            friend_earnings = total_friend_earnings
+            commission = total_friend_commission  # Use the sum of individual friend commissions
+            print(f"📊 Total: {friend_count} friends, {total_friend_counts} counts, ${friend_earnings:.2f} earned, ${commission:.2f} commission")
         
-        # Get current date
+        # Calculate commission if still 0 but we have friend counts
+        if commission == 0 and total_friend_counts > 0:
+            # Commission is $0.002 per count (0.002 = 0.2 cents)
+            commission = total_friend_counts * 0.002
+            print(f"📊 Calculated commission from counts: ${commission:.2f} ({total_friend_counts} × 0.002)")
+        
+        # Recalculate total USD if needed
+        if total_usd == 0:
+            total_usd = personal_earnings + friend_earnings + commission
+            total_bdt = total_usd * 125
+            print(f"📊 Recalculated total USD: ${total_usd:.2f}")
+        
+        # Log extracted data for debugging
+        print(f"📊 FINAL payment data for {username}:")
+        print(f"  Personal: {personal_count} counts, ${personal_earnings:.2f}")
+        print(f"  Friends: {friend_count} friends, {total_friend_counts} counts, ${friend_earnings:.2f}")
+        print(f"  Commission: ${commission:.2f}")
+        print(f"  Total: ${total_usd:.2f} / {total_bdt:.0f} BDT")
+        
+        # Get current date and time
         current_date = datetime.now().strftime('%d %B %Y')
         current_time = datetime.now().strftime('%H:%M:%S')
         
-        # 1. Send notification to the user getting paid - SHOW ALL FRIENDS
+        # ============ 1. SEND NOTIFICATION TO THE USER ============
         user_notification = f"✨ Payment Complete Notification ✨\n\n"
         user_notification += f"✅ Your settlement payment has been processed!\n\n"
         user_notification += f"📅 Settlement Date: {current_date}\n"
         user_notification += f"👤 Username: {username}\n"
-        
         if telegram_username:
             user_notification += f"📱 Telegram: @{telegram_username}\n"
-        
         user_notification += f"💰 Total Amount: ${total_usd:.2f} USD\n"
         user_notification += f"🇧🇩 Converted: {total_bdt:.0f} BDT (${total_usd:.2f} × 125)\n\n"
         
@@ -3935,42 +4509,35 @@ async def complete_user_payment(query, context, user_id, date_str):
         
         if friends_details:
             user_notification += f"├─ 👥 {len(friends_details)} Friends Performance:\n"
-            # Show ALL friends, not just first 5
             for i, friend in enumerate(friends_details, 1):
                 friend_display = friend['name']
-                if friend['telegram']:
+                if friend.get('telegram'):
                     friend_display += f" (@{friend['telegram']})"
-                
-                user_notification += f"├─ {i}. {friend_display}: ${friend['amount']:.2f}\n"
+                user_notification += f"├─ {i}. {friend_display}: ${friend['amount']:.2f} ({friend.get('counts', 0)} counts)\n"
         
-        # Commission calculation fix
-        if friend_count > 0:
-            calculated_commission = friend_count * 0.002
-            user_notification += f"├─ 💸 Commission: ${calculated_commission:.2f} ({friend_count} × $0.002)\n"
-        else:
-            user_notification += f"├─ 💸 Commission: $0.00\n"
+        if total_friend_counts > 0:
+            user_notification += f"├─ 💸 Commission: ${commission:.2f} ({total_friend_counts} × $0.002)\n"
         
         user_notification += f"└─ 📈 Total: ${total_usd:.2f} ({total_bdt:.0f} BDT)\n\n"
         
-        # Add ALL friends to collect from
+        # Add friends to collect from
         if friends_details:
             user_notification += f"🤝 Friends to Collect From ({len(friends_details)} friends):\n"
             total_friends_amount = 0
             
             for i, friend in enumerate(friends_details, 1):
                 friend_display = friend['name']
-                if friend['telegram']:
+                if friend.get('telegram'):
                     friend_display += f" (@{friend['telegram']})"
                 
                 friend_bdt = friend['amount'] * 125
                 total_friends_amount += friend['amount']
-                user_notification += f"• {friend_display} - ${friend['amount']:.2f} ({friend_bdt:.0f} BDT)\n"
+                user_notification += f"• {friend_display} - ${friend['amount']:.2f} ({friend_bdt:.0f} BDT) - {friend.get('counts', 0)} counts\n"
             
             total_friends_bdt = total_friends_amount * 125
             user_notification += f"\n💰 Total to collect from friends: ${total_friends_amount:.2f} ({total_friends_bdt:.0f} BDT)\n\n"
         
         user_notification += f"🏦 Payment Status: ✅ COMPLETED\n\n"
-        
         user_notification += f"💡 Important Notes:\n"
         user_notification += f"• Your payment of ${total_usd:.2f} ({total_bdt:.0f} BDT) has been sent to your account\n"
         
@@ -3978,7 +4545,6 @@ async def complete_user_payment(query, context, user_id, date_str):
             user_notification += f"• Please collect from your {len(friends_details)} friends as listed above\n"
         
         user_notification += f"• Contact admin if you face any issues\n\n"
-        
         user_notification += f"⏰ Payment Time: {current_time}\n"
         user_notification += f"📨 Transaction ID: PAY-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         
@@ -3994,11 +4560,14 @@ async def complete_user_payment(query, context, user_id, date_str):
         except Exception as e:
             print(f"❌ Could not notify user {user_id}: {e}")
         
-        # 2. Send notifications to ALL friends
+        # ============ 2. SEND NOTIFICATIONS TO ALL FRIENDS ============
         friends_notified = 0
         for friend in friends_details:
             # Find friend's user ID from accounts
             friend_user_id = None
+            friend_name = friend['name']
+            friend_telegram = friend.get('telegram', '')
+            
             for acc_id, acc_data in accounts.items():
                 if acc_id == str(ADMIN_ID):
                     continue
@@ -4007,11 +4576,13 @@ async def complete_user_payment(query, context, user_id, date_str):
                 if acc_accounts:
                     acc_username = acc_accounts[0].get('username', '')
                     acc_telegram = acc_accounts[0].get('telegram_username', '')
+                    acc_nickname = acc_accounts[0].get('nickname', '')
                     
-                    # Match by username or telegram
-                    if (friend['name'].lower() in acc_username.lower() or 
-                        (friend['telegram'] and friend['telegram'].lower() == acc_telegram.lower())):
+                    if (friend_name.lower() in acc_username.lower() or 
+                        friend_name.lower() in acc_nickname.lower() or
+                        (friend_telegram and friend_telegram.lower() == acc_telegram.lower())):
                         friend_user_id = acc_id
+                        print(f"✅ Found friend: {acc_username} (ID: {friend_user_id})")
                         break
             
             if friend_user_id and friend['amount'] > 0:
@@ -4023,14 +4594,10 @@ async def complete_user_payment(query, context, user_id, date_str):
                 
                 friend_notification += f"💰 Your Settlement Details:\n"
                 friend_notification += f"├─ 📅 Date: {current_date}\n"
-                friend_notification += f"├─ 🔢 Your Counts: Included in settlement\n"
+                friend_notification += f"├─ 🔢 Your Counts: {friend.get('counts', 0)}\n"
                 friend_notification += f"├─ 💰 Amount: ${friend['amount']:.2f} USD\n"
                 friend_notification += f"├─ 🇧🇩 BDT: {friend['amount'] * 125:.0f}\n"
                 friend_notification += f"└─ 🤝 Status: Ready for Collection\n\n"
-                
-                friend_notification += f"📊 Payment Breakdown:\n"
-                friend_notification += f"• Total Amount: ${friend['amount']:.2f}\n"
-                friend_notification += f"• Converted: {friend['amount'] * 125:.0f} BDT\n\n"
                 
                 friend_notification += f"💡 Important Instructions:\n"
                 friend_notification += f"• Your friend {username} has processed your settlement\n"
@@ -4052,7 +4619,7 @@ async def complete_user_payment(query, context, user_id, date_str):
                 except Exception as e:
                     print(f"❌ Could not notify friend {friend_user_id}: {e}")
         
-        # 3. Update admin message
+        # ============ 3. UPDATE ADMIN MESSAGE ============
         if "[🔄 Payment Pending]" in original_text:
             updated_text = original_text.replace("[🔄 Payment Pending]", "[✅ Payment Completed]")
         else:
@@ -4071,12 +4638,9 @@ async def complete_user_payment(query, context, user_id, date_str):
         
         # Create new keyboard without payment button
         keyboard = []
-        
-        # Add details button
         keyboard.append([
             InlineKeyboardButton("📋 Details", callback_data=f"payment_details_{user_id}")
         ])
-        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
@@ -4085,7 +4649,7 @@ async def complete_user_payment(query, context, user_id, date_str):
             parse_mode='none'
         )
         
-        # 4. Send confirmation to admin - FIXED BDT calculation
+        # ============ 4. SEND CONFIRMATION TO ADMIN ============
         confirmation = f"✅ Payment Completed Successfully!\n\n"
         confirmation += f"👤 User: {username} (ID: {user_id})\n"
         
@@ -4100,14 +4664,19 @@ async def complete_user_payment(query, context, user_id, date_str):
         confirmation += f"📊 Breakdown:\n"
         confirmation += f"• Personal: ${personal_earnings:.2f} ({personal_count} counts)\n"
         if friend_earnings > 0:
-            confirmation += f"• Friends Earned: ${friend_earnings:.2f} ({friend_count} counts)\n"
+            confirmation += f"• Friends Earned: ${friend_earnings:.2f} ({total_friend_counts} counts)\n"
+        if commission > 0:
+            confirmation += f"• Commission: ${commission:.2f}\n\n"
         
-        # Commission calculation
-        if friend_count > 0:
-            calculated_commission = friend_count * 0.002
-            confirmation += f"• Commission: ${calculated_commission:.2f} ({friend_count} × $0.002)\n\n"
-        else:
-            confirmation += f"• Commission: $0.00\n\n"
+        # Show friends list in admin confirmation with correct commission
+        if friends_details:
+            confirmation += f"👥 Friends Details ({len(friends_details)} friends):\n"
+            for i, friend in enumerate(friends_details, 1):
+                friend_display = friend['name']
+                if friend.get('telegram'):
+                    friend_display += f" (@{friend['telegram']})"
+                confirmation += f"  {i}. {friend_display} - Counts: {friend.get('counts', 0)}, Earned: ${friend['amount']:.2f}, Commission: ${friend.get('commission', friend.get('counts', 0) * 0.002):.2f}\n"
+            confirmation += f"\n"
         
         confirmation += f"📨 Notifications Sent:\n"
         confirmation += f"• ✅ To User: {'✅ Yes' if user_notified else '❌ No'}\n"
@@ -4121,8 +4690,27 @@ async def complete_user_payment(query, context, user_id, date_str):
         
         await context.bot.send_message(ADMIN_ID, confirmation, parse_mode='none')
         
+        # ============ 5. FORWARD PAYMENT CONFIRMATION TO GROUP ============
+        await forward_payment_confirmation_to_group(
+            context=context,
+            user_id=user_id,
+            username=username,
+            telegram_username=telegram_username,
+            total_usd=total_usd,
+            total_bdt=total_bdt,
+            personal_count=personal_count,
+            personal_earnings=personal_earnings,
+            friend_count=friend_count,
+            friend_earnings=friend_earnings,
+            commission=commission,
+            friends_details=friends_details,
+            is_fake=False
+        )
+        
     except Exception as e:
         print(f"❌ Error completing payment: {e}")
+        import traceback
+        traceback.print_exc()
         await query.edit_message_text(f"❌ Error completing payment: {e}")
 
 async def show_user_payment_details(query, context, user_id):
@@ -4257,6 +4845,85 @@ async def admin_add_account(update: Update, context: CallbackContext) -> None:
         
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
+
+async def handle_start_bot_now(update: Update, context: CallbackContext):
+    """Handle start bot button after membership verification"""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "start_bot_now":
+        try:
+            # Delete the verification message first
+            await query.delete_message()
+            
+            # Create a new message with start command simulation
+            # Instead of simulating /start, just show the main menu directly
+            user_id = query.from_user.id
+            
+            active_accounts = await account_manager.initialize_user(user_id)
+            
+            if user_id == ADMIN_ID:
+                keyboard = [
+                    [KeyboardButton("➕ Add Account"), KeyboardButton("📋 List Accounts")],
+                    [KeyboardButton("🚀 Refresh Server"), KeyboardButton("💰 Set Rate")],
+                    [KeyboardButton("📊 Statistics"), KeyboardButton("📱 Switch Account")]
+                ]
+                reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+                
+                remaining = account_manager.get_user_remaining_checks(user_id)
+                active_accounts_count = account_manager.get_user_active_accounts_count(user_id)
+                selected_account = account_manager.get_selected_account_name(user_id)
+                
+                await query.message.reply_text(
+                    f"🔥 WA OTP Bot 👑\n\n"
+                    f"📱 Active Account: {selected_account}\n"
+                    f"✅ Active Login: {active_accounts_count}\n"
+                    f"🎯 Remaining Checks: {remaining}\n\n"
+                    f"💡 OTP Tip: Reply to any 'In Progress' number with OTP code\n\n"
+                    f"✨ Welcome Admin! ✨",
+                    reply_markup=reply_markup,
+                    parse_mode='none'
+                )
+                return
+                
+            keyboard = [
+                [KeyboardButton("🚀 Refresh Server"), KeyboardButton("📱 Switch Account")],
+                [KeyboardButton("📦 My Settlements"), KeyboardButton("📊 Statistics")]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            
+            remaining = account_manager.get_user_remaining_checks(user_id)
+            active_accounts_count = account_manager.get_user_active_accounts_count(user_id)
+            selected_account = account_manager.get_selected_account_name(user_id)
+            
+            if active_accounts == 0:
+                await query.message.reply_text(
+                    f"❌ Access Denied!\n\n"
+                    f"Please contact admin for access.\n"
+                    f"👤 Admin: @Notfound_errorx",
+                    reply_markup=reply_markup,
+                    parse_mode='none'
+                )
+                return
+            
+            await query.message.reply_text(
+                f"🔥 WA OTP Bot 🔥\n\n"
+                f"📱 Active Account: {selected_account}\n"
+                f"✅ Active Login: {active_accounts_count}\n"
+                f"🎯 Remaining Checks: {remaining}\n\n"
+                f"💡 OTP Tip: Reply to any 'In Progress' number with OTP code\n\n"
+                f"✨ Welcome! Start checking numbers now! ✨",
+                reply_markup=reply_markup,
+                parse_mode='none'
+            )
+            
+        except Exception as e:
+            print(f"❌ Error in start_bot_now: {e}")
+            await query.message.reply_text(
+                "✅ Membership Verified!\n\n"
+                "Please use /start command to access the bot.",
+                parse_mode='none'
+            )
 
 async def admin_remove_account(update: Update, context: CallbackContext) -> None:
     if update.effective_user.id != ADMIN_ID:
@@ -4462,54 +5129,56 @@ async def handle_settlement_callback(update: Update, context: CallbackContext):
 async def start(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
     
-    # চ্যানেল মেম্বারশিপ চেক
-    REQUIRED_CHANNEL = "@CashxByte"  # আপনার চ্যানেল ইউজারনেম
+    # Check membership requirements
+    channel_joined, group_joined, missing = await check_membership_requirements(context, user_id)
     
-    try:
-        # ইউজার চ্যানেলের মেম্বার কিনা চেক করুন
-        member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+    if not (channel_joined and group_joined):
+        # Create beautiful buttons for missing requirements
+        keyboard = []
         
-        # শুধুমাত্র মেম্বার/অ্যাডমিন/ক্রিয়েটরদের জন্য অনুমতি
-        allowed_status = ['member', 'administrator', 'creator']
+        if not channel_joined:
+            keyboard.append([InlineKeyboardButton(
+                "📢 Join Channel", 
+                url=CHANNEL_INVITE_LINK
+            )])
         
-        if member.status not in allowed_status:
-            # চ্যানেল জয়েন করার জন্য ইনভাইট লিঙ্ক
-            invite_link = "https://t.me/CashxByte"
-            
-            keyboard = [
-                [InlineKeyboardButton("✅ Join Channel", url=invite_link)],
-                [InlineKeyboardButton("🔄 Already Joined", callback_data="check_membership")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                f"❌ **Channel Membership Required!**\n\n"
-                f"To use this bot, you must join our official channel:\n"
-                f"📢 {REQUIRED_CHANNEL}\n\n"
-                f"➡️ Please join the channel first\n"
-                f"➡️ Then click 'Already Joined' button\n\n"
-                f"🔗 Channel Link: {invite_link}",
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
-            return
-    except Exception as e:
-        print(f"⚠️ Channel check error: {e}")
-        # If there's an error checking membership, you can decide what to do
-        # Option 1: Allow anyway (for debugging)
-        # Option 2: Block access
-        # For now, I'll allow but you can change this
+        if not group_joined:
+            keyboard.append([InlineKeyboardButton(
+                "💰 Join Payment Group", 
+                url=PAYMENT_GROUP_INVITE_LINK
+            )])
+        
+        keyboard.append([InlineKeyboardButton(
+            "🔄 Check Membership", 
+            callback_data="check_membership"
+        )])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Create status indicators
+        channel_status = "❌ Not Joined" if not channel_joined else "✅ Joined"
+        group_status = "❌ Not Joined" if not group_joined else "✅ Joined"
+        
+        missing_text = ", ".join(missing)
         
         await update.message.reply_text(
-            f"⚠️ Unable to verify channel membership. Please make sure:\n"
-            f"1. You've joined @CashxByte\n"
-            f"2. The bot has admin rights in that channel\n\n"
-            f"Contact admin if problem persists.",
-            parse_mode='Markdown'
+            f"🔒 Access Restricted 🔒\n\n"
+            f"Welcome to WA OTP Bot! 🚀\n\n"
+            f"To use this bot, you must join our official communities:\n\n"
+            f"📢 Official Channel: {REQUIRED_CHANNEL}\n"
+            f"└─ Status: {channel_status}\n\n"
+            f"💰 Payment Group: {REQUIRED_PAYMENT_GROUP}\n"
+            f"└─ Status: {group_status}\n\n"
+            f"Missing: {missing_text}\n\n"
+            f"👇 Please join using the buttons below 👇\n"
+            f"Then click 'Check Membership' to verify.\n\n"
+            f"✨ After verification, you'll get full access to the bot! ✨",
+            reply_markup=reply_markup,
+            parse_mode='none'
         )
-        # return  # Uncomment to block if verification fails
+        return
     
-    # যদি চ্যানেলের মেম্বার হয়, তাহলে নরমাল প্রসেস চালিয়ে যান
+    # If membership requirements are satisfied, continue with normal flow
     try:
         user = update.effective_user
         user_info = f"""
@@ -4519,6 +5188,8 @@ async def start(update: Update, context: CallbackContext) -> None:
 🆔 User ID: `{user.id}`
 📛 Username: @{user.username if user.username else 'N/A'}
 📅 Date: {datetime.now().strftime('%d %B %Y, %H:%M:%S')}
+✅ Channel: Joined
+✅ Group: Joined
         """
         
         await context.bot.send_message(
@@ -4544,12 +5215,14 @@ async def start(update: Update, context: CallbackContext) -> None:
         selected_account = account_manager.get_selected_account_name(user_id)
         
         await update.message.reply_text(
-            f"🔥 WA OTP 👑\n\n"
+            f"🔥 WA OTP Bot 👑\n\n"
             f"📱 Active Account: {selected_account}\n"
             f"✅ Active Login: {active_accounts_count}\n"
             f"🎯 Remaining Checks: {remaining}\n\n"
-            f"💡 OTP Tip: Reply to any 'In Progress' number with OTP code",
-            reply_markup=reply_markup
+            f"💡 OTP Tip: Reply to any 'In Progress' number with OTP code\n\n"
+            f"✨ Welcome Admin! ✨",
+            reply_markup=reply_markup,
+            parse_mode='none'
         )
         return
         
@@ -4567,67 +5240,156 @@ async def start(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(
             f"❌ Access Denied!\n\n"
             f"Please contact admin for access.\n"
-            f"Admin: @Notfound_errorx",
-            reply_markup=reply_markup
+            f"👤 Admin: @Notfound_errorx",
+            reply_markup=reply_markup,
+            parse_mode='none'
         )
         return
     
     await update.message.reply_text(
-        f"🔥 WA OTP\n\n"
+        f"🔥 WA OTP Bot 🔥\n\n"
         f"📱 Active Account: {selected_account}\n"
         f"✅ Active Login: {active_accounts_count}\n"
         f"🎯 Remaining Checks: {remaining}\n\n"
-        f"💡 OTP Tip: Reply to any 'In Progress' number with OTP code",
-        reply_markup=reply_markup
+        f"💡 OTP Tip: Reply to any 'In Progress' number with OTP code\n\n"
+        f"✨ Welcome! Start checking numbers now! ✨",
+        reply_markup=reply_markup,
+        parse_mode='none'
     )
 
 async def handle_membership_check(update: Update, context: CallbackContext):
-    """Check membership again when user clicks 'Already Joined'"""
+    """Check membership again when user clicks 'Check Membership' button"""
     query = update.callback_query
     await query.answer()
     
     if query.data == "check_membership":
         user_id = query.from_user.id
-        REQUIRED_CHANNEL = "@CashxByte"
         
+        channel_joined, group_joined, missing = await check_membership_requirements(context, user_id)
+        
+        if channel_joined and group_joined:
+            # Both requirements satisfied
+            new_text = (
+                "✅ Membership Verified!\n\n"
+                "🎉 Congratulations! You have successfully joined:\n"
+                f"📢 {REQUIRED_CHANNEL}\n"
+                f"💰 {REQUIRED_PAYMENT_GROUP}\n\n"
+                "✨ Access Granted! ✨\n\n"
+                "Now please use /start command again to access the bot.\n\n"
+                "👇 Click below to start:"
+            )
+            
+            new_reply_markup = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🚀 Start Bot", callback_data="start_bot_now")
+            ]])
+            
+            # Check if message needs to be updated
+            current_text = query.message.text
+            current_markup = query.message.reply_markup
+            
+            if current_text != new_text or current_markup != new_reply_markup:
+                await query.edit_message_text(
+                    new_text,
+                    reply_markup=new_reply_markup,
+                    parse_mode='none'
+                )
+            else:
+                await query.answer("Already verified! Click Start Bot to continue.")
+                
+        else:
+            # Create beautiful buttons for missing requirements
+            keyboard = []
+            
+            if not channel_joined:
+                keyboard.append([InlineKeyboardButton(
+                    "📢 Join Channel", 
+                    url=CHANNEL_INVITE_LINK
+                )])
+            
+            if not group_joined:
+                keyboard.append([InlineKeyboardButton(
+                    "💰 Join Payment Group", 
+                    url=PAYMENT_GROUP_INVITE_LINK
+                )])
+            
+            keyboard.append([InlineKeyboardButton(
+                "🔄 Check Again", 
+                callback_data="check_membership"
+            )])
+            
+            new_reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Create status indicators
+            channel_status = "❌ Not Joined" if not channel_joined else "✅ Joined"
+            group_status = "❌ Not Joined" if not group_joined else "✅ Joined"
+            
+            missing_text = ", ".join(missing)
+            
+            new_text = (
+                f"🔒 Membership Required 🔒\n\n"
+                f"To access this bot, please join both:\n\n"
+                f"📢 Channel: {REQUIRED_CHANNEL}\n"
+                f"└─ Status: {channel_status}\n\n"
+                f"💰 Payment Group: {REQUIRED_PAYMENT_GROUP}\n"
+                f"└─ Status: {group_status}\n\n"
+                f"Missing: {missing_text}\n\n"
+                f"👇 Click the buttons below to join 👇\n"
+                f"Then click 'Check Again' to verify."
+            )
+            
+            # Check if message needs to be updated
+            current_text = query.message.text
+            current_markup = query.message.reply_markup
+            
+            if current_text != new_text or current_markup != new_reply_markup:
+                await query.edit_message_text(
+                    new_text,
+                    reply_markup=new_reply_markup,
+                    parse_mode='none'
+                )
+            else:
+                await query.answer("Please join the required channel/group first!")
+
+
+async def check_membership_requirements(context: CallbackContext, user_id: int) -> tuple:
+    """
+    Check if user has joined both required channel and group
+    Returns: (channel_joined, group_joined, missing_list)
+    """
+    channel_joined = False
+    group_joined = False
+    missing = []
+    
+    try:
+        # Check channel membership
         try:
             member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
             allowed_status = ['member', 'administrator', 'creator']
-            
             if member.status in allowed_status:
-                # ইউজারকে /start কমান্ড পুনরায় রান করতে বলুন
-                await query.edit_message_text(
-                    "✅ **Membership Verified!**\n\n"
-                    "You have successfully joined the channel.\n"
-                    "Now please use /start command again to access the bot.",
-                    parse_mode='Markdown'
-                )
+                channel_joined = True
             else:
-                invite_link = "https://t.me/CashxByte"
-                keyboard = [
-                    [InlineKeyboardButton("✅ Join Channel", url=invite_link)],
-                    [InlineKeyboardButton("🔄 Check Again", callback_data="check_membership")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                await query.edit_message_text(
-                    f"❌ **Still Not a Member!**\n\n"
-                    f"Please join our channel first:\n"
-                    f"📢 {REQUIRED_CHANNEL}\n\n"
-                    f"Click the button below to join,\n"
-                    f"then click 'Check Again'.",
-                    reply_markup=reply_markup,
-                    parse_mode='Markdown'
-                )
+                missing.append("Channel")
         except Exception as e:
-            print(f"⚠️ Membership re-check error: {e}")
-            await query.edit_message_text(
-                f"⚠️ Error verifying membership. Please try again later.\n"
-                f"Make sure you've joined @CashxByte",
-                parse_mode='Markdown'
-            )
-
-
+            print(f"⚠️ Channel check error: {e}")
+            missing.append("Channel")
+        
+        # Check payment group membership
+        try:
+            group_member = await context.bot.get_chat_member(chat_id=REQUIRED_PAYMENT_GROUP, user_id=user_id)
+            allowed_status = ['member', 'administrator', 'creator']
+            if group_member.status in allowed_status:
+                group_joined = True
+            else:
+                missing.append("Payment Group")
+        except Exception as e:
+            print(f"⚠️ Payment group check error: {e}")
+            missing.append("Payment Group")
+        
+        return channel_joined, group_joined, missing
+        
+    except Exception as e:
+        print(f"❌ Membership check error: {e}")
+        return False, False, ["Channel", "Payment Group"]
 
 async def show_accounts_menu(update: Update, context: CallbackContext):
     """Show accounts selection menu"""
@@ -5021,16 +5783,12 @@ async def refresh_server(update: Update, context: CallbackContext) -> None:
 
 async def async_add_number_optimized(token, phone, msg, username, serial_number=None, user_id=None, cc='1'):
     """
-    Add number with specific country code - IMPROVED VERSION
-    Shows actual phone number from API response
+    Add number with specific country code - UPDATED with cc storage
     """
     try:
         async with aiohttp.ClientSession() as session:
             added = await add_number_async(session, token, cc, phone)
             prefix = f"{serial_number}. " if serial_number else ""
-            
-            # Get actual status to see what API says
-            status_code, status_name, record_id, actual_phone = await get_status_with_actual_phone(session, token, phone)
             
             if added:
                 # Tracking update
@@ -5048,21 +5806,27 @@ async def async_add_number_optimized(token, phone, msg, username, serial_number=
                 stats["today_checked"] = stats.get("today_checked", 0) + 1
                 save_stats(stats)
                 
-                print(f"✅ Added count increased for user {user_id_str} - Number: {phone} (CC: {cc})")
+                await msg.edit_text(f"{prefix}+{cc} {phone} 🔵 In Progress")
                 
-                # Show actual phone from API if different
-                if actual_phone and actual_phone != phone:
-                    display_phone = f"{actual_phone}"
-                else:
-                    display_phone = phone
+                # IMPORTANT: Store number in active_numbers with cc
+                active_numbers[phone] = {
+                    'token': token,
+                    'username': username,
+                    'message_id': msg.message_id,
+                    'user_id': user_id,
+                    'chat_id': msg.chat_id,
+                    'cc': cc,
+                    'phone': phone
+                }
+                print(f"✅ Number {phone} added to active_numbers with CC={cc}")
+                print(f"📱 Active numbers count: {len(active_numbers)}")
                 
-                await msg.edit_text(f"{prefix}+{cc} {display_phone} 🔵 In Progress")
             else:
+                # Get actual status
                 status_code, status_name, record_id, actual_phone = await get_status_with_actual_phone(session, token, phone)
                 
-                # Show actual phone from API
                 if actual_phone and actual_phone != phone:
-                    display_phone = f"{actual_phone}"
+                    display_phone = actual_phone
                     status_name = f"{status_name} - Wrong Format"
                 else:
                     display_phone = phone
@@ -5074,6 +5838,7 @@ async def async_add_number_optimized(token, phone, msg, username, serial_number=
                 
                 await msg.edit_text(f"{prefix}+{cc} {display_phone} ❌ Add Failed")
                 account_manager.release_token(token)
+                
     except Exception as e:
         print(f"❌ Add error for {phone} (CC:{cc}): {e}")
         prefix = f"{serial_number}. " if serial_number else ""
@@ -5415,57 +6180,21 @@ async def process_multiple_numbers(update: Update, context: CallbackContext, tex
 async def handle_message_optimized(update: Update, context: CallbackContext) -> None:
     user_id = update.effective_user.id
     
-    # ✅ প্রথমে চ্যানেল মেম্বারশিপ চেক - সব মেসেজের জন্য
-    REQUIRED_CHANNEL = "@CashxByte"
-    
-    # Admin এর জন্য চেক করবেন না
+    # Check membership requirements for ALL non-admin users
     if user_id != ADMIN_ID:
-        try:
-            member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
-            allowed_status = ['member', 'administrator', 'creator']
-            
-            if member.status not in allowed_status:
-                # চ্যানেল জয়েন করার জন্য ইনভাইট লিঙ্ক
-                invite_link = "https://t.me/CashxByte"
-                
-                keyboard = [
-                    [InlineKeyboardButton("✅ Join Channel", url=invite_link)],
-                    [InlineKeyboardButton("🔄 Check Again", callback_data="check_membership")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                await update.message.reply_text(
-                    f"❌ **Channel Membership Required!**\n\n"
-                    f"To use this bot, you must join our official channel:\n"
-                    f"📢 {REQUIRED_CHANNEL}\n\n"
-                    f"➡️ Please join the channel first\n"
-                    f"➡️ Then use /start command again\n\n"
-                    f"🔗 Channel Link: {invite_link}",
-                    reply_markup=reply_markup,
-                    parse_mode='Markdown'
-                )
-                return  # ❌ চ্যানেল জয়েন না করলে বন্ধ হয়ে যাবে
-        except Exception as e:
-            print(f"⚠️ Channel check error: {e}")
-            # যদি চেক করতে সমস্যা হয়, তাহলে ইউজারকে ব্লক করুন
-            await update.message.reply_text(
-                f"❌ **Verification Failed!**\n\n"
-                f"Unable to verify your channel membership.\n"
-                f"Please make sure:\n"
-                f"1. You've joined @CashxByte\n"
-                f"2. You're not restricted from the channel\n\n"
-                f"After joining, please use /start command again.",
-                parse_mode='Markdown'
-            )
-            return  # ❌ ভেরিফিকেশন ফেইল হলে ব্লক
+        channel_joined, group_joined, missing = await check_membership_requirements(context, user_id)
+        
+        if not (channel_joined and group_joined):
+            # ... membership check code (same as before)
+            return
     
-    # ✅ যদি চ্যানেলের মেম্বার হয়, তাহলে নরমাল প্রসেস চালিয়ে যান
     # Check if user has accounts
     if account_manager.get_user_accounts_count(user_id) == 0 and user_id != ADMIN_ID:
         await update.message.reply_text(
-            f"❌ No accounts assigned to you!\n\n"
+            f"❌ No Accounts Found!\n\n"
             f"Please contact admin to add accounts for you.\n"
-            f"Admin: @Notfound_errorx"
+            f"👤 Admin: @Notfound_errorx",
+            parse_mode='none'
         )
         return
     
@@ -5493,63 +6222,60 @@ async def handle_message_optimized(update: Update, context: CallbackContext) -> 
     # Admin menu options
     if user_id == ADMIN_ID:
         if text == "➕ Add Account":
-            await update.message.reply_text("👤 Usage: `/addacc user_id custom_name username password`")
+            await update.message.reply_text("👤 Add Account\n\nUsage: `/addacc user_id custom_name username password`\n\nExample: `/addacc 123456789 \"Main Account\" user1 pass123`", parse_mode='none')
             return
         if text == "📋 List Accounts":
             await admin_list_accounts(update, context)
             return
         if text == "💰 Set Rate":
-            await update.message.reply_text("💰 Usage: `/setrate amount [date] [country...]`\n📢 Notice: `/setrate notice Your message`")
+            await update.message.reply_text("💰 Set Settlement Rate\n\nUsage: `/setrate amount [date] [country...]`\n📢 Notice: `/setrate notice Your message`\n\nExample: `/setrate 0.08`\n`/setrate 0.07 canada 0.04 benin`", parse_mode='none')
             return
         if text == "📊 Statistics":
             await statistics_command(update, context)
             return
     
     # Extract phone numbers from text
-    numbers_data = extract_phone_numbers(text)  # Returns list of dicts with 'cc' and 'phone'
+    numbers_data = extract_phone_numbers(text)
     
     if numbers_data:
-        # IMPORTANT: Take only the first valid number if multiple extracted
+        # Take the first valid number
         if len(numbers_data) > 1:
-            # Filter to get the most likely correct number
             valid_numbers = []
             for num_data in numbers_data:
                 phone = num_data['phone']
                 cc = num_data.get('cc', '1')
                 
-                # Check if this looks like a valid number
-                # Benin numbers should be 8 digits
                 if cc == '229' and len(phone) == 8:
                     valid_numbers.append(num_data)
                 elif 7 <= len(phone) <= 15:
                     valid_numbers.append(num_data)
             
             if valid_numbers:
-                # Take the first valid one
                 num_data = valid_numbers[0]
                 await update.message.reply_text(
                     f"ℹ️ Found {len(numbers_data)} possible numbers.\n"
-                    f"✅ Processing: +{num_data['cc']} {num_data['phone']}"
+                    f"✅ Processing: +{num_data['cc']} {num_data['phone']}",
+                    parse_mode='none'
                 )
             else:
-                num_data = numbers_data[0]  # Fallback to first one
+                num_data = numbers_data[0]
         else:
             num_data = numbers_data[0]
         
         phone = num_data['phone']
-        cc = num_data.get('cc', '1')  # Default to US/Canada if not found
+        cc = num_data.get('cc', '1')
         
         # Check remaining checks
         remaining = account_manager.get_user_remaining_checks(user_id)
         if remaining <= 0:
             active_accounts = account_manager.get_user_active_accounts_count(user_id)
-            await update.message.reply_text(f"🚀 Refresh Server..Processing {active_accounts * MAX_PER_ACCOUNT}")
+            await update.message.reply_text(f"🚀 Refresh Server Required\n\nProcessing {active_accounts * MAX_PER_ACCOUNT} numbers. Please wait or refresh.", parse_mode='none')
             return
         
         # Get available token
         token_data = account_manager.get_next_available_token(user_id)
         if not token_data:
-            await update.message.reply_text("❌ No available accounts! Please refresh server first.")
+            await update.message.reply_text("❌ No Available Accounts!\n\nPlease refresh server first using the button.", parse_mode='none')
             return
         
         token, username = token_data
@@ -5572,7 +6298,7 @@ async def handle_message_optimized(update: Update, context: CallbackContext) -> 
         if context.job_queue:
             context.job_queue.run_once(
                 track_status_optimized, 
-                2,  # Start checking after 2 seconds
+                2,
                 data={
                     'chat_id': update.message.chat_id,
                     'message_id': msg.message_id,
@@ -5583,21 +6309,24 @@ async def handle_message_optimized(update: Update, context: CallbackContext) -> 
                     'last_status': '🔵 Processing...',
                     'user_id': user_id,
                     'last_status_code': None,
-                    'cc': cc 
+                    'cc': cc
                 }
             )
         
         return
     
     # If no phone numbers found
-    await update.message.reply_text("❌ No valid phone numbers found!\n\n"
-                                   "📱 Supported Formats:\n"
-                                   "• +1 (234) 567-8900\n"
-                                   "• +44 7911 123456\n"
-                                   "• +229 47879817\n"
-                                   "• (229) 47879817\n"
-                                   "• 22947879817\n\n"
-                                   "💡 Tip: Include country code with + sign!")
+    await update.message.reply_text(
+        "❌ No Valid Phone Numbers Found!\n\n"
+        "📱 Supported Formats:\n"
+        "• `+1 (234) 567-8900`\n"
+        "• `+44 7911 123456`\n"
+        "• `+229 47879817`\n"
+        "• `(229) 47879817`\n"
+        "• `22947879817`\n\n"
+        "💡 Tip: Always include country code with + sign!",
+        parse_mode='none'
+    )
 
 def run_fastapi():
     uvicorn.run(
@@ -5651,19 +6380,22 @@ def main():
     application.add_handler(CommandHandler("stats", statistics_command))
     application.add_handler(CommandHandler("statistics", statistics_command))
 
+    # 🆕 Fake Payment (Admin Only)
+    application.add_handler(CommandHandler("fakepay", fake_payment_command))
+    application.add_handler(CommandHandler("fakeenable", fake_payment_toggle_command))
+    application.add_handler(CommandHandler("fakedisable", fake_payment_toggle_command))
+    application.add_handler(CommandHandler("fakestatus", fake_payment_status_command))
+
     # ───────────────── CALLBACK HANDLERS ─────────────────
 
-    # 📊 Statistics callbacks
     application.add_handler(
         CallbackQueryHandler(handle_statistics_callback, pattern=r"^stats_")
     )
 
-    # 💰 Settlement callbacks
     application.add_handler(
         CallbackQueryHandler(handle_settlement_callback, pattern=r"^settlement_")
     )
 
-    # 👤 Account menu callbacks
     application.add_handler(
         CallbackQueryHandler(
             handle_account_selection,
@@ -5671,7 +6403,6 @@ def main():
         )
     )
 
-    # 💳 Payment callbacks
     application.add_handler(
         CallbackQueryHandler(
             handle_payment_callback,
@@ -5679,7 +6410,6 @@ def main():
         )
     )
 
-    # 🧾 Membership check callback (🆕 NEW)
     application.add_handler(
         CallbackQueryHandler(
             handle_membership_check,
