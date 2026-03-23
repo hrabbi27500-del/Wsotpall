@@ -52,7 +52,7 @@ FAKE_PAYMENT_ENABLED = os.environ.get("FAKE_PAYMENT_ENABLED", "True").lower() ==
 REQUIRED_CHANNEL = "@CashxByte"  # Main channel
 REQUIRED_PAYMENT_GROUP = os.environ.get("REQUIRED_PAYMENT_GROUP", "@livepayupdates")  # Payment group username
 CHANNEL_INVITE_LINK = "https://t.me/CashxByte"  # Channel invite link
-PAYMENT_GROUP_INVITE_LINK = os.environ.get("PAYMENT_GROUP_INVITE_LINK", "https://t.me/livepayupdate")  # Group invite link
+PAYMENT_GROUP_INVITE_LINK = os.environ.get("PAYMENT_GROUP_INVITE_LINK", "https://t.me/livepayupdates")  # Group invite link
 
 # Random user data for fake payments
 FAKE_USERNAMES = [
