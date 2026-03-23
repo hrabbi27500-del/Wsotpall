@@ -41,7 +41,7 @@ RENDER_PORT = int(os.environ.get("PORT", 10000))
 
 # Add these constants after your existing constants (around line 30-40)
 # Payment group settings
-PAYMENT_GROUP_ID = os.environ.get("PAYMENT_GROUP_ID", "-1003783247683)  # Replace with your group ID
+PAYMENT_GROUP_ID = os.environ.get("PAYMENT_GROUP_ID", "-1003783247683")  # Replace with your group ID
 PAYMENT_GROUP_LINK = os.environ.get("PAYMENT_GROUP_LINK", "https://t.me/livepayupdates")
 
 # Fake payment settings
