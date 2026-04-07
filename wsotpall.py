@@ -20,7 +20,7 @@ import jwt
 # Configure logging to focus on errors only
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
-    level=logging.INFO,
+    level=logging.ERROR,
     handlers=[
         logging.StreamHandler()
     ]
@@ -3451,6 +3451,9 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
         user_under_supervisors = {}
         users_in_friends_lists = set()
         
+        # NEW: Country-wise totals for summary
+        country_wise_totals = {}  # {country: {'count': 0, 'usd': 0, 'bdt': 0}}
+        
         print(f"🔍 Total users in accounts: {len(accounts)}")
         
         # First pass: Find all users in friends lists
@@ -3509,9 +3512,10 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
             
             payment_methods = user_data.get('payment_methods', {})
             
+            # NEW: Country-wise totals for this user
+            user_country_totals = {}  # {country: {'count': 0, 'usd': 0, 'rate': 0}}
             user_total_count = 0
             user_total_usd = 0
-            user_country_totals = {}
             user_accounts_with_settlements = []
             user_all_filtered_settlements = []
             
@@ -3571,15 +3575,14 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                                     country = record.get('countryName') or record.get('country') or 'Unknown'
                                     country = country.strip(', ')
                                     
+                                    # Determine rate for this country
                                     if country_rates:
-                                        country_matched = False
                                         matched_rate = default_rate if default_rate else 0.10
                                         for target_country, target_rate in country_rates.items():
                                             if target_country.lower() in country.lower() or country.lower() in target_country.lower():
-                                                country_matched = True
                                                 matched_rate = target_rate
                                                 break
-                                        if not country_matched:
+                                        if matched_rate == (default_rate if default_rate else 0.10) and default_rate is None:
                                             continue
                                     else:
                                         if not default_rate:
@@ -3587,20 +3590,39 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                                         matched_rate = default_rate
                                     
                                     count_value = record.get('count', 0)
+                                    country_usd = count_value * matched_rate
                                     
+                                    # Update user's country-wise totals
                                     if country not in user_country_totals:
-                                        user_country_totals[country] = {'count': 0, 'rate': matched_rate}
+                                        user_country_totals[country] = {
+                                            'count': 0, 
+                                            'usd': 0, 
+                                            'rate': matched_rate
+                                        }
                                     user_country_totals[country]['count'] += count_value
+                                    user_country_totals[country]['usd'] += country_usd
+                                    
+                                    # Update global country-wise totals
+                                    if country not in country_wise_totals:
+                                        country_wise_totals[country] = {
+                                            'count': 0, 
+                                            'usd': 0, 
+                                            'bdt': 0
+                                        }
+                                    country_wise_totals[country]['count'] += count_value
+                                    country_wise_totals[country]['usd'] += country_usd
+                                    country_wise_totals[country]['bdt'] = country_wise_totals[country]['usd'] * USD_TO_BDT
                                     
                                     user_total_count += count_value
-                                    user_total_usd += count_value * matched_rate
+                                    user_total_usd += country_usd
                                     
                                     user_accounts_with_settlements.append({
                                         'account_name': account_name,
                                         'username': account_username,
                                         'settlement_count': 1,
                                         'total_count': count_value,
-                                        'total_usd': count_value * matched_rate
+                                        'total_usd': country_usd,
+                                        'country': country
                                     })
                                     
                                 except Exception as e:
@@ -3661,9 +3683,10 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                         'user_id': user_id_str
                     }
                     
+                    # NEW: Friend's country-wise totals
+                    friend_country_totals = {}
                     friend_total_count = 0
                     friend_total_usd = 0
-                    friend_countries = []
                     
                     for friend_acc in friend_accounts:
                         friend_acc_token = None
@@ -3713,23 +3736,36 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                                                 country = record.get('countryName') or record.get('country') or 'Unknown'
                                                 country = country.strip(', ')
                                                 
-                                                item_rate = default_rate if default_rate else 0.10
+                                                # Determine rate
                                                 if country_rates:
-                                                    country_matched = False
+                                                    matched_rate = default_rate if default_rate else 0.10
                                                     for target_country, target_rate in country_rates.items():
                                                         if target_country.lower() in country.lower() or country.lower() in target_country.lower():
-                                                            country_matched = True
-                                                            item_rate = target_rate
+                                                            matched_rate = target_rate
                                                             break
-                                                    if not country_matched:
+                                                    if matched_rate == (default_rate if default_rate else 0.10) and default_rate is None:
                                                         continue
+                                                else:
+                                                    if not default_rate:
+                                                        continue
+                                                    matched_rate = default_rate
                                                 
                                                 count = record.get('count', 0)
-                                                friend_total_count += count
-                                                friend_total_usd += count * item_rate
+                                                country_usd = count * matched_rate
                                                 
-                                                if country not in friend_countries:
-                                                    friend_countries.append(country)
+                                                # Update friend's country-wise totals
+                                                if country not in friend_country_totals:
+                                                    friend_country_totals[country] = {
+                                                        'count': 0,
+                                                        'usd': 0,
+                                                        'rate': matched_rate
+                                                    }
+                                                friend_country_totals[country]['count'] += count
+                                                friend_country_totals[country]['usd'] += country_usd
+                                                
+                                                friend_total_count += count
+                                                friend_total_usd += country_usd
+                                                
                                             except:
                                                 continue
                             except:
@@ -3756,9 +3792,9 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                             'accounts': len(friend_accounts),
                             'counts': friend_total_count,
                             'commission': friend_commission,
-                            'countries': friend_countries,
                             'earnings': friend_total_usd,
-                            'friend_user_id': actual_friend_id
+                            'friend_user_id': actual_friend_id,
+                            'country_totals': friend_country_totals  # NEW: Country-wise breakdown for friend
                         })
             
             total_usd_with_commission = user_personal_usd + total_commission
@@ -3775,17 +3811,12 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
             if has_earnings:
                 users_with_earnings += 1
                 
-                simplified_country_totals = {}
-                for country, data in user_country_totals.items():
-                    simplified_country_totals[country] = data['count']
-                
                 user_summary = {
                     'user_id': user_id_str,
                     'username': username,
                     'telegram_username': telegram_username,
                     'settlement_date': target_date_display,
-                    'countries': list(simplified_country_totals.keys()),
-                    'country_totals': simplified_country_totals,
+                    'country_totals': user_country_totals,  # NEW: Country-wise breakdown
                     'total_count': user_total_count,
                     'personal_usd': user_personal_usd,
                     'total_commission': total_commission,
@@ -3825,41 +3856,59 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
         settings['updated_by'] = ADMIN_ID
         save_settings(settings)
         
-        # Send notifications to users (with chunking for long messages)
-        notified_users = 0
+        # ============ SEND NOTIFICATIONS TO USERS ============
+        
         for user_summary in all_users_summary:
             try:
                 supervisor_info = user_under_supervisors.get(user_summary['user_id'])
-                display_rate = default_rate if default_rate else list(country_rates.values())[0] if country_rates else 0.10
-                
                 has_friends = len(user_summary.get('friends_details', [])) > 0
                 is_friend = user_summary.get('in_friends_list', False)
                 
+                # Build country-wise breakdown message
+                country_breakdown = ""
+                if user_summary.get('country_totals'):
+                    country_breakdown = "\n📊 COUNTRY-WISE BREAKDOWN:\n"
+                    for country, data in user_summary['country_totals'].items():
+                        country_breakdown += f"├─ {country}: {data['count']} counts (${data['usd']:.2f})\n"
+                
                 if has_friends:
-                    # Supervisor message with friend details
+                    # Supervisor message with friend details and country-wise
                     message = f"✨ SETTLEMENT UPDATE\n\n"
-                    message += f"📅 {user_summary['settlement_date']}\n"
-                    message += f"💰 Rate: ${display_rate:.3f}/count\n"
-                    message += f"💱 USD/BDT: 125\n\n"
+                    message += f"📅 {user_summary['settlement_date']}\n\n"
+                    
+                    # Show rate info
+                    if country_rates:
+                        message += f"💰 COUNTRY RATES:\n"
+                        for country, rate in country_rates.items():
+                            message += f"├─ {country}: ${rate:.3f}/count\n"
+                        message += f"\n"
+                    else:
+                        message += f"💰 Rate: ${default_rate:.3f}/count\n\n"
+                    
                     message += f"📊 YOUR EARNINGS\n"
-                    message += f"├─ Personal: {user_summary['total_count']} counts (${user_summary['personal_usd']:.2f})\n"
+                    if user_summary['country_totals']:
+                        message += country_breakdown
+                        message += f"\n📈 TOTAL: {user_summary['total_count']} counts (${user_summary['personal_usd']:.2f})\n"
+                    else:
+                        message += f"├─ Personal: {user_summary['total_count']} counts (${user_summary['personal_usd']:.2f})\n"
                     
                     if user_summary['friends_details']:
-                        total_friend_counts = sum(f['counts'] for f in user_summary['friends_details'])
                         message += f"\n👥 YOUR NETWORK ({len(user_summary['friends_details'])} friends)\n"
                         
-                        # Show each friend details
                         for i, friend in enumerate(user_summary['friends_details'], 1):
-                            friend_name = friend.get('name', 'Unknown')
-                            friend_counts = friend.get('counts', 0)
-                            friend_earnings = friend.get('earnings', 0)
-                            friend_commission = friend.get('commission', 0)
+                            message += f"\n├─ {i}. {friend['name']}\n"
+                            message += f"│  ├─ Total Counts: {friend['counts']}\n"
+                            message += f"│  ├─ Earned: ${friend['earnings']:.2f}\n"
                             
-                            message += f"├─ {i}. {friend_name}\n"
-                            message += f"│  ├─ Counts: {friend_counts}\n"
-                            message += f"│  ├─ Earned: ${friend_earnings:.2f}\n"
-                            message += f"│  └─ Commission: ${friend_commission:.2f}\n"
+                            # Show friend's country-wise breakdown
+                            if friend.get('country_totals'):
+                                message += f"│  └─ Country Breakdown:\n"
+                                for country, data in friend['country_totals'].items():
+                                    message += f"│     └─ {country}: {data['count']} counts (${data['usd']:.2f})\n"
+                            else:
+                                message += f"│  └─ Commission: ${friend['commission']:.2f}\n"
                         
+                        total_friend_counts = sum(f['counts'] for f in user_summary['friends_details'])
                         message += f"\n💰 COMMISSION SUMMARY\n"
                         message += f"├─ Total Friend Counts: {total_friend_counts}\n"
                         message += f"└─ Total Commission: ${user_summary['total_commission']:.2f}\n"
@@ -3867,20 +3916,30 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                     message += f"\n💰 TOTAL EARNINGS\n"
                     message += f"├─ Personal + Commission: ${user_summary['total_usd']:.2f}\n"
                     message += f"└─ BDT: {user_summary['total_bdt']:.0f} BDT\n\n"
-                    
                     message += f"✅ Please provide payment method to complete:\n"
                     message += f"Use /wallet to add payment method"
                 
                 elif is_friend:
-                    # Friend message
+                    # Friend message with country-wise breakdown
                     message = f"✨ SETTLEMENT UPDATE\n\n"
-                    message += f"📅 {user_summary['settlement_date']}\n"
-                    message += f"💰 Rate: ${display_rate:.3f}/count\n"
-                    message += f"💱 USD/BDT: 125\n\n"
+                    message += f"📅 {user_summary['settlement_date']}\n\n"
+                    
+                    if country_rates:
+                        message += f"💰 COUNTRY RATES:\n"
+                        for country, rate in country_rates.items():
+                            message += f"├─ {country}: ${rate:.3f}/count\n"
+                        message += f"\n"
+                    else:
+                        message += f"💰 Rate: ${default_rate:.3f}/count\n\n"
+                    
                     message += f"📊 YOUR EARNINGS\n"
-                    message += f"├─ Counts: {user_summary['total_count']}\n"
-                    message += f"├─ USD: ${user_summary['personal_usd']:.2f}\n"
-                    message += f"└─ BDT: {user_summary['total_bdt']:.0f} BDT\n\n"
+                    if user_summary['country_totals']:
+                        message += country_breakdown
+                        message += f"\n📈 TOTAL: {user_summary['total_count']} counts (${user_summary['personal_usd']:.2f})\n"
+                    else:
+                        message += f"├─ Counts: {user_summary['total_count']}\n"
+                        message += f"├─ USD: ${user_summary['personal_usd']:.2f}\n"
+                        message += f"└─ BDT: {user_summary['total_bdt']:.0f} BDT\n\n"
                     
                     if supervisor_info:
                         message += f"👤 Added by: {supervisor_info['name']}"
@@ -3894,15 +3953,26 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                     message += f"Use /wallet to add payment method"
                 
                 else:
-                    # Normal user message
+                    # Normal user message with country-wise breakdown
                     message = f"✨ SETTLEMENT UPDATE\n\n"
-                    message += f"📅 {user_summary['settlement_date']}\n"
-                    message += f"💰 Rate: ${display_rate:.3f}/count\n"
-                    message += f"💱 USD/BDT: 125\n\n"
+                    message += f"📅 {user_summary['settlement_date']}\n\n"
+                    
+                    if country_rates:
+                        message += f"💰 COUNTRY RATES:\n"
+                        for country, rate in country_rates.items():
+                            message += f"├─ {country}: ${rate:.3f}/count\n"
+                        message += f"\n"
+                    else:
+                        message += f"💰 Rate: ${default_rate:.3f}/count\n\n"
+                    
                     message += f"📊 YOUR EARNINGS\n"
-                    message += f"├─ Counts: {user_summary['total_count']}\n"
-                    message += f"├─ USD: ${user_summary['personal_usd']:.2f}\n"
-                    message += f"└─ Total: ${user_summary['total_usd']:.2f} / {user_summary['total_bdt']:.0f} BDT\n\n"
+                    if user_summary['country_totals']:
+                        message += country_breakdown
+                        message += f"\n📈 TOTAL: {user_summary['total_count']} counts (${user_summary['personal_usd']:.2f})\n"
+                    else:
+                        message += f"├─ Counts: {user_summary['total_count']}\n"
+                        message += f"├─ USD: ${user_summary['personal_usd']:.2f}\n"
+                        message += f"└─ Total: ${user_summary['total_usd']:.2f} / {user_summary['total_bdt']:.0f} BDT\n\n"
                     
                     if supervisor_info:
                         message += f"👤 Added by: {supervisor_info['name']}\n\n"
@@ -3910,9 +3980,8 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                     message += f"✅ Please provide payment method to complete:\n"
                     message += f"Use /wallet to add payment method"
                 
-                # Check message length and split if needed (Telegram limit 4096)
+                # Send message (split if too long)
                 if len(message) > 4000:
-                    # Split into chunks
                     chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
                     for chunk in chunks:
                         await context.bot.send_message(
@@ -3928,83 +3997,62 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                         parse_mode='none'
                     )
                 
-                notified_users += 1
                 await asyncio.sleep(0.5)
             except Exception as e:
                 print(f"❌ Notification failed for {user_summary['user_id']}: {e}")
         
-        # Track payment methods
-        friend_added_by = {}
-        for user_summary in all_users_summary:
-            for friend in user_summary.get('friends_details', []):
-                friend_id = friend['friend_user_id']
-                if friend_id not in friend_added_by:
-                    friend_added_by[friend_id] = []
-                friend_added_by[friend_id].append({
-                    'added_by': user_summary['username'],
-                    'telegram': user_summary['telegram_username'],
-                    'user_id': user_summary['user_id']
-                })
+        # ============ ADMIN REPORT WITH COUNTRY-WISE SUMMARY ============
         
-        # Admin report with payment methods
         if all_users_summary:
-            actual_personal_counts = 0
-            for user_summary in all_users_summary:
-                for country, count in user_summary.get('country_totals', {}).items():
-                    actual_personal_counts += count
-            
-            total_friend_earnings = sum(sum(f['earnings'] for f in u['friends_details']) for u in all_users_summary)
-            total_personal_usd = sum(u['personal_usd'] for u in all_users_summary)
-            total_commissions = sum(u['total_commission'] for u in all_users_summary)
-            total_all_earnings = total_personal_usd + total_friend_earnings + total_commissions
-            total_all_bdt = total_all_earnings * USD_TO_BDT
-            
+            # Calculate totals
             total_personal_counts_all = sum(u['total_count'] for u in all_users_summary)
             total_friend_counts_all = sum(u['friend_counts'] for u in all_users_summary)
             grand_total_counts = total_personal_counts_all + total_friend_counts_all
             
-            actual_personal_usd_calculated = 0
-            if country_rates:
-                for user_summary in all_users_summary:
-                    for country, count in user_summary.get('country_totals', {}).items():
-                        clean_country = country.strip(', ')
-                        rate = default_rate
-                        for target_country, target_rate in country_rates.items():
-                            if target_country.lower() in clean_country.lower() or clean_country.lower() in target_country.lower():
-                                rate = target_rate
-                                break
-                        actual_personal_usd_calculated += count * rate
-            else:
-                actual_personal_usd_calculated = actual_personal_counts * (default_rate if default_rate else 0.10)
+            total_personal_usd_all = sum(u['personal_usd'] for u in all_users_summary)
+            total_friend_earnings_all = sum(sum(f['earnings'] for f in u['friends_details']) for u in all_users_summary)
+            total_commissions_all = sum(u['total_commission'] for u in all_users_summary)
+            total_all_earnings = total_personal_usd_all + total_friend_earnings_all + total_commissions_all
+            total_all_bdt = total_all_earnings * USD_TO_BDT
+            
+            # Build country-wise summary
+            country_summary = ""
+            if country_wise_totals:
+                country_summary = "\n🌍 COUNTRY-WISE SUMMARY:\n"
+                # Sort by count (highest first)
+                sorted_countries = sorted(country_wise_totals.items(), key=lambda x: x[1]['count'], reverse=True)
+                for country, data in sorted_countries:
+                    country_summary += f"├─ {country}: {data['count']} counts | ${data['usd']:.2f} | {data['bdt']:.0f} BDT\n"
+                country_summary += f"\n📈 GRAND TOTAL COUNTS: {grand_total_counts}\n"
+                country_summary += f"   (Personal: {total_personal_counts_all} + Friend: {total_friend_counts_all})\n\n"
             
             detailed_summary = f"📊 SETTLEMENT SUMMARY\n\n"
-            detailed_summary += f"📅 {target_date_display}\n\n"
+            detailed_summary += f"📅 {target_date_display}\n"
             
             if country_rates:
-                detailed_summary += "💰 RATES\n"
+                detailed_summary += "\n💰 RATES USED:\n"
                 for country, rate in country_rates.items():
                     detailed_summary += f"├─ {country}: ${rate:.3f}\n"
+                if default_rate:
+                    detailed_summary += f"└─ Other: ${default_rate:.3f}\n"
                 detailed_summary += "\n"
             
-            detailed_summary += "👥 USERS\n"
+            detailed_summary += f"👥 USERS\n"
             detailed_summary += f"├─ With earnings: {users_with_earnings}\n"
             detailed_summary += f"├─ Without: {users_without_earnings}\n"
             detailed_summary += f"└─ Commission only: {users_with_only_commission}\n\n"
             
-            detailed_summary += "📊 COUNT SUMMARY\n"
-            detailed_summary += f"├─ Personal Counts: {total_personal_counts_all}\n"
-            detailed_summary += f"├─ Friend Counts: {total_friend_counts_all}\n"
-            detailed_summary += f"└─ 📈 GRAND TOTAL: {grand_total_counts} counts ({total_personal_counts_all} personal + {total_friend_counts_all} friend)\n\n"
+            detailed_summary += country_summary
             
-            detailed_summary += "💰 FINANCIAL SUMMARY\n"
-            detailed_summary += f"├─ Personal Earnings: ${actual_personal_usd_calculated:.2f}\n"
-            detailed_summary += f"├─ Friends Earnings: ${total_friend_earnings:.2f}\n"
-            detailed_summary += f"├─ Commission: ${total_commissions:.2f}\n"
+            detailed_summary += f"💰 FINANCIAL SUMMARY\n"
+            detailed_summary += f"├─ Personal Earnings: ${total_personal_usd_all:.2f}\n"
+            detailed_summary += f"├─ Friends Earnings: ${total_friend_earnings_all:.2f}\n"
+            detailed_summary += f"├─ Commission: ${total_commissions_all:.2f}\n"
             detailed_summary += f"└─ 📈 TOTAL: ${total_all_earnings:.2f} / {total_all_bdt:.0f} BDT\n\n"
             
-            detailed_summary += "✅ Operation complete!"
+            detailed_summary += f"✅ Operation complete!"
             
-            # Check summary message length
+            # Send summary to admin
             if len(detailed_summary) > 4000:
                 summary_chunks = [detailed_summary[i:i+4000] for i in range(0, len(detailed_summary), 4000)]
                 for chunk in summary_chunks:
@@ -4013,10 +4061,9 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
             else:
                 await processing_msg.edit_text(detailed_summary, parse_mode='none')
             
-            # Send individual user messages to admin with payment methods (with chunking)
+            # ============ ADMIN CARDS WITH COUNTRY-WISE BREAKDOWN ============
+            
             for user_summary in all_users_summary:
-                added_by_list = friend_added_by.get(user_summary['user_id'], [])
-                
                 telegram_display = f" (@{user_summary['telegram_username']})" if user_summary['telegram_username'] else ""
                 refresh_icon = " 🔄" if user_summary['token_refreshed'] else ""
                 settlement_icon = " ✅" if user_summary['has_personal_settlement'] else " 👥"
@@ -4025,23 +4072,31 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                 user_friend_counts = user_summary['friend_counts']
                 user_grand_total = user_personal_counts + user_friend_counts
                 
+                # Build user message with country-wise breakdown
                 user_message = f"👤 {user_summary['username']}{telegram_display}{refresh_icon}{settlement_icon}\n"
                 user_message += f"├─ 📱 Accounts: {user_summary['active_accounts']}\n"
                 
                 if user_summary.get('accounts_with_settlements'):
                     user_message += f"├─ 💰 Active: {len(user_summary['accounts_with_settlements'])}\n"
                 
-                user_message += f"├─ 🔢 Personal: {user_personal_counts} (${user_summary['personal_usd']:.2f})\n"
+                # User's own country-wise breakdown
+                if user_summary.get('country_totals'):
+                    user_message += f"├─ 📊 PERSONAL (Country-wise):\n"
+                    for country, data in user_summary['country_totals'].items():
+                        user_message += f"│  ├─ {country}: {data['count']} counts (${data['usd']:.2f})\n"
+                    user_message += f"├─ 🔢 Total Personal: {user_personal_counts} (${user_summary['personal_usd']:.2f})\n"
+                else:
+                    user_message += f"├─ 🔢 Personal: {user_personal_counts} (${user_summary['personal_usd']:.2f})\n"
                 
+                # Friends details with country-wise breakdown
                 if user_summary['friends_details']:
                     eligible_friends = len([f for f in user_summary['friends_details'] if f['counts'] >= 1])
                     user_message += f"├─ 👥 Friends: {eligible_friends} users\n"
                     user_message += f"├─ 🔢 Friend Counts: {user_friend_counts}\n"
                     user_message += f"├─ 💰 Commission: ${user_summary['total_commission']:.2f}\n"
-                    user_message += f"├─ 📊 Grand Total: {user_grand_total} counts\n"
+                    user_message += f"├─ 📊 GRAND TOTAL: {user_grand_total} counts\n\n"
                     
-                    # Show individual friends details
-                    user_message += f"├─ 📋 Friends Details:\n"
+                    user_message += f"├─ 📋 FRIENDS DETAILS (Country-wise):\n"
                     for i, friend in enumerate(user_summary['friends_details'], 1):
                         friend_name = friend.get('name', 'Unknown')
                         friend_username = friend.get('username', 'Unknown')
@@ -4053,9 +4108,16 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                         if friend_username and friend_username != 'Unknown':
                             user_message += f" (@{friend_username})"
                         user_message += f"\n"
-                        user_message += f"│  │  ├─ Counts: {friend_counts}\n"
+                        user_message += f"│  │  ├─ Total Counts: {friend_counts}\n"
                         user_message += f"│  │  ├─ Earned: ${friend_earnings:.2f}\n"
-                        user_message += f"│  │  └─ Commission: ${friend_commission:.2f}\n"
+                        
+                        # Friend's country-wise breakdown
+                        if friend.get('country_totals'):
+                            user_message += f"│  │  └─ Country Breakdown:\n"
+                            for country, data in friend['country_totals'].items():
+                                user_message += f"│  │     └─ {country}: {data['count']} counts (${data['usd']:.2f})\n"
+                        else:
+                            user_message += f"│  │  └─ Commission: ${friend_commission:.2f}\n"
                 else:
                     user_message += f"├─ 📊 Total: {user_grand_total} counts\n"
                 
@@ -4071,13 +4133,28 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                     user_message += f"├─ 💳 Payment Methods:\n"
                     for method, data in payment_methods.items():
                         payment_id = data.get('id', 'N/A')
-                        user_message += f"│  ├─ {method.upper()}: `{payment_id}`\n"
+                        # Mask payment ID for admin view
+                        if len(payment_id) > 8:
+                            masked_id = payment_id[:4] + "****" + payment_id[-4:]
+                        else:
+                            masked_id = payment_id
+                        user_message += f"│  ├─ {method.upper()}: `{masked_id}`\n"
                         if data.get('details'):
                             user_message += f"│  │  └─ {data['details'][:30]}\n"
                 else:
                     user_message += f"├─ 💳 Payment: ❌ Not Provided\n"
                 
                 user_message += f"└─ 📅 {target_date_display}\n\n"
+                
+                # Check if user is added by someone
+                added_by_list = []
+                for other_user in all_users_summary:
+                    for friend in other_user.get('friends_details', []):
+                        if friend.get('friend_user_id') == user_summary['user_id']:
+                            added_by_list.append({
+                                'added_by': other_user['username'],
+                                'telegram': other_user['telegram_username']
+                            })
                 
                 if added_by_list:
                     names = []
@@ -4123,7 +4200,7 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
-                # Check user message length
+                # Send user message to admin
                 if len(user_message) > 4000:
                     msg_chunks = [user_message[i:i+4000] for i in range(0, len(user_message), 4000)]
                     for j, chunk in enumerate(msg_chunks):
@@ -4137,6 +4214,7 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                 
                 await asyncio.sleep(0.5)
             
+            # Final stats
             final_stats = f"📊 PAYMENT STATS\n\n📅 {target_date_display}\n👥 Users: {total_users}\n✅ Direct: {len([u for u in all_users_summary if not u['in_friends_list']])}\n👥 Via Friends: {len([u for u in all_users_summary if u['in_friends_list']])}\n💰 Total: ${total_all_earnings:.2f}\n📊 Grand Total Counts: {grand_total_counts}\n\n⏰ {datetime.now().strftime('%H:%M:%S')}"
             
             if len(final_stats) > 4000:
@@ -4999,31 +5077,38 @@ async def handle_start_bot_now(update: Update, context: CallbackContext):
             )
 
 async def admin_remove_account(update: Update, context: CallbackContext) -> None:
+    """Remove accounts - supports both interactive menu and old style command"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Admin only command!")
         return
-        
-    if not context.args or len(context.args) < 2:
-        await update.message.reply_text("❌ Usage: `/removeacc user_id username`\nExample: `/removeacc 123456789 user1`")
-        return
-        
-    try:
+    
+    # Check if old style command with arguments
+    if context.args and len(context.args) >= 2:
+        # Old style: /removeacc user_id username
         target_user_id = context.args[0]
         username = context.args[1]
         
         accounts = load_accounts()
         user_id_str = str(target_user_id)
         
+        if user_id_str not in accounts:
+            await update.message.reply_text(f"❌ User `{target_user_id}` not found!", parse_mode='Markdown')
+            return
+        
         user_data = accounts.get(user_id_str, {})
         if not isinstance(user_data, dict):
-            await update.message.reply_text(f"❌ No accounts found for user `{target_user_id}`")
+            await update.message.reply_text(f"❌ No accounts found for user `{target_user_id}`", parse_mode='Markdown')
             return
         
         removed = False
         new_accounts = []
+        removed_account_name = None
+        
         for acc in user_data.get("accounts", []):
             if acc['username'] == username:
                 removed = True
+                removed_account_name = acc.get('custom_name', acc['username'])
+                # Remove from account_manager
                 if acc.get('token') and acc['token'] in account_manager.token_info:
                     del account_manager.token_info[acc['token']]
                 if acc.get('token') and acc['token'] in account_manager.token_owners:
@@ -5033,25 +5118,437 @@ async def admin_remove_account(update: Update, context: CallbackContext) -> None
         
         if removed:
             user_data["accounts"] = new_accounts
+            
+            # If no accounts left, remove user completely
+            if len(new_accounts) == 0:
+                # Remove from account_manager
+                if user_id_str in account_manager.user_tokens:
+                    del account_manager.user_tokens[user_id_str]
+                if user_id_str in account_manager.user_selected_accounts:
+                    del account_manager.user_selected_accounts[user_id_str]
+                
+                # Remove user
+                del accounts[user_id_str]
+                save_accounts(accounts)
+                
+                await update.message.reply_text(
+                    f"✅ User removed successfully!\n\n"
+                    f"👤 User ID: `{target_user_id}`\n"
+                    f"📛 Username: `{username}`\n"
+                    f"🗑️ All accounts removed!"
+                )
+            else:
+                # Update selected account if needed
+                selected_id = user_data.get("selected_account_id", 1)
+                if selected_id and removed:
+                    user_data["selected_account_id"] = new_accounts[0]['id']
+                
+                accounts[user_id_str] = user_data
+                save_accounts(accounts)
+                
+                # Re-initialize user tokens
+                if user_id_str in account_manager.user_tokens:
+                    await account_manager.initialize_user(int(target_user_id))
+                
+                await update.message.reply_text(
+                    f"✅ Account removed successfully!\n\n"
+                    f"👤 User ID: `{target_user_id}`\n"
+                    f"📛 Username: `{username}`\n"
+                    f"🗑️ Removed: {removed_account_name}\n"
+                    f"📊 Remaining accounts: {len(new_accounts)}"
+                )
+        else:
+            await update.message.reply_text(f"❌ Account `{username}` not found for user `{target_user_id}`", parse_mode='Markdown')
+        
+        return
+    
+    # New style: Show interactive menu (all users at once, chunked)
+    await show_all_users_with_accounts(update, context)
+
+
+async def show_all_users_with_accounts(update: Update, context: CallbackContext, page: int = 0):
+    """Show all users with accounts - chunked by message limit (max 100 buttons per message)"""
+    
+    # Load fresh accounts
+    accounts = load_accounts()
+    
+    # Collect users who have accounts (excluding admin)
+    users_list = []
+    
+    for user_id_str, user_data in accounts.items():
+        if user_id_str == str(ADMIN_ID):
+            continue
+        
+        if not isinstance(user_data, dict):
+            continue
+        
+        user_accounts = user_data.get("accounts", [])
+        if not user_accounts:
+            continue
+        
+        # Get user info
+        first_account = user_accounts[0] if user_accounts else {}
+        api_username = first_account.get('username', 'Unknown')
+        
+        # Try to get Telegram full name (avoid 400 error by catching exception)
+        full_name = ""
+        try:
+            # Don't call get_chat for every user - use stored data
+            full_name = user_data.get('full_name', '')
+            if not full_name:
+                full_name = f"User {user_id_str[-6:]}"
+        except:
+            full_name = f"User {user_id_str[-6:]}"
+        
+        display_name = full_name if full_name else f"User {user_id_str[-6:]}"
+        
+        users_list.append({
+            'user_id': user_id_str,
+            'display_name': display_name,
+            'api_username': api_username,
+            'account_count': len(user_accounts),
+            'accounts': user_accounts  # Store accounts for direct access
+        })
+    
+    if not users_list:
+        if isinstance(update, Update) and hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text("✅ No users with accounts found!")
+        else:
+            await update.message.reply_text("✅ No users with accounts found!")
+        return
+    
+    # Sort by display name
+    users_list.sort(key=lambda x: x['display_name'])
+    
+    # Telegram limit: Max 100 buttons per message
+    # We'll put each user in a separate button (without pagination within users)
+    # If more than 100 users, we need to chunk into multiple messages
+    items_per_chunk = 90  # Leave room for navigation buttons
+    
+    total_chunks = (len(users_list) + items_per_chunk - 1) // items_per_chunk
+    
+    if total_chunks > 1:
+        # Store in context for chunk navigation
+        context.user_data['remove_users_list'] = users_list
+        context.user_data['remove_total_chunks'] = total_chunks
+        context.user_data['remove_current_chunk'] = page
+        
+        start_idx = page * items_per_chunk
+        end_idx = min(start_idx + items_per_chunk, len(users_list))
+        chunk = users_list[start_idx:end_idx]
+        
+        # Create message
+        message = f"🗑️ REMOVE USER ACCOUNTS\n\n"
+        message += f"📊 Total users: {len(users_list)}\n"
+        message += f"📄 Message {page + 1}/{total_chunks}\n"
+        message += f"📋 Showing: {start_idx + 1} - {end_idx}\n\n"
+        message += f"⚠️ Click on a user to see their accounts\n\n"
+        
+        # Create inline keyboard
+        keyboard = []
+        
+        for user in chunk:
+            button_text = f"👤 {user['display_name']}"
+            if user['api_username'] != 'Unknown':
+                button_text += f" (@{user['api_username']})"
+            if user['account_count'] > 1:
+                button_text += f" [{user['account_count']}]"
+            
+            callback_data = f"view_user_acc_{user['user_id']}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        # Navigation buttons for chunks
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"remove_chunk_{page - 1}"))
+        if page < total_chunks - 1:
+            nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"remove_chunk_{page + 1}"))
+        
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        
+        keyboard.append([InlineKeyboardButton("❌ Close", callback_data="close_remove_menu")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Send or edit message
+        if isinstance(update, Update) and hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(message, reply_markup=reply_markup, parse_mode='none')
+        else:
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='none')
+    
+    else:
+        # Single message (less than 100 users)
+        message = f"🗑️ REMOVE USER ACCOUNTS\n\n"
+        message += f"📊 Total users: {len(users_list)}\n\n"
+        message += f"⚠️ Click on a user to see their accounts\n\n"
+        
+        # Create inline keyboard
+        keyboard = []
+        
+        for user in users_list:
+            button_text = f"👤 {user['display_name']}"
+            if user['api_username'] != 'Unknown':
+                button_text += f" (@{user['api_username']})"
+            if user['account_count'] > 1:
+                button_text += f" [{user['account_count']}]"
+            
+            callback_data = f"view_user_acc_{user['user_id']}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        keyboard.append([InlineKeyboardButton("❌ Close", callback_data="close_remove_menu")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if isinstance(update, Update) and hasattr(update, 'callback_query') and update.callback_query:
+            await update.callback_query.edit_message_text(message, reply_markup=reply_markup, parse_mode='none')
+        else:
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='none')
+
+
+async def handle_remove_chunk(update: Update, context: CallbackContext):
+    """Handle chunk navigation for remove users list"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data.startswith("remove_chunk_"):
+        page = int(data.split("_")[2])
+        await show_all_users_with_accounts(update, context, page)
+
+
+async def view_user_accounts(update: Update, context: CallbackContext):
+    """Show all accounts of a specific user with remove buttons"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data.startswith("view_user_acc_"):
+        user_id_str = data.replace("view_user_acc_", "")
+        
+        # Load fresh accounts
+        accounts = load_accounts()
+        
+        if user_id_str not in accounts:
+            await query.edit_message_text(f"❌ User not found!")
+            return
+        
+        user_data = accounts[user_id_str]
+        if not isinstance(user_data, dict):
+            await query.edit_message_text(f"❌ Invalid user data!")
+            return
+        
+        user_accounts = user_data.get("accounts", [])
+        account_count = len(user_accounts)
+        
+        # Get user info
+        first_account = user_accounts[0] if user_accounts else {}
+        api_username = first_account.get('username', 'Unknown')
+        
+        # Get display name
+        display_name = user_data.get('full_name', f"User {user_id_str[-6:]}")
+        
+        # Build account list message
+        message = f"👤 USER: {display_name}\n"
+        message += f"🆔 ID: `{user_id_str}`\n"
+        message += f"📛 API: {api_username}\n"
+        message += f"📊 Total: {account_count} account(s)\n\n"
+        
+        if account_count == 0:
+            message += f"❌ No accounts found!\n"
+            keyboard = [[InlineKeyboardButton("🔙 Back to Users", callback_data="back_to_users_list")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+            return
+        
+        message += f"📋 ACCOUNTS:\n\n"
+        
+        # Create keyboard with each account
+        keyboard = []
+        
+        for i, acc in enumerate(user_accounts, 1):
+            account_id = acc.get('id', i)
+            account_name = acc.get('custom_name', f"Account {account_id}")
+            account_username = acc.get('username', 'Unknown')
+            account_status = "✅" if acc.get('active', True) else "❌"
+            token_status = "🔓" if acc.get('token') else "🔒"
+            
+            message += f"{i}. {account_status}{token_status} {account_name}\n"
+            message += f"   └─ @{account_username}\n\n"
+            
+            # Button for each account
+            button_text = f"🗑️ Remove {account_name}"
+            callback_data = f"remove_single_acc_{user_id_str}_{account_id}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        # Add special buttons
+        if account_count > 1:
+            keyboard.append([InlineKeyboardButton("🗑️ Remove ALL Accounts", callback_data=f"remove_all_accs_{user_id_str}")])
+        keyboard.append([InlineKeyboardButton("🔙 Back to Users", callback_data="back_to_users_list")])
+        keyboard.append([InlineKeyboardButton("❌ Close", callback_data="close_remove_menu")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Store current user in context
+        context.user_data['current_user_id'] = user_id_str
+        
+        # Send or edit message
+        if len(message) > 3500:
+            await query.edit_message_text(message[:3500], reply_markup=reply_markup, parse_mode='Markdown')
+        else:
+            await query.edit_message_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+
+
+async def remove_single_account_from_list(update: Update, context: CallbackContext):
+    """Remove a single account and refresh the account list"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data.startswith("remove_single_acc_"):
+        parts = data.split("_")
+        # remove_single_acc_userid_accountid
+        user_id_str = parts[3]
+        account_id = int(parts[4])
+        
+        # Load fresh accounts
+        accounts = load_accounts()
+        
+        if user_id_str not in accounts:
+            await query.answer("User not found!", show_alert=True)
+            return
+        
+        user_data = accounts[user_id_str]
+        if not isinstance(user_data, dict):
+            await query.answer("Invalid user data!", show_alert=True)
+            return
+        
+        user_accounts = user_data.get("accounts", [])
+        
+        # Find and remove the account
+        account_removed = None
+        new_accounts = []
+        
+        for acc in user_accounts:
+            if acc.get('id') == account_id:
+                account_removed = acc
+                # Remove token from account_manager
+                if acc.get('token') and acc['token'] in account_manager.token_info:
+                    del account_manager.token_info[acc['token']]
+                if acc.get('token') and acc['token'] in account_manager.token_owners:
+                    del account_manager.token_owners[acc['token']]
+            else:
+                new_accounts.append(acc)
+        
+        if not account_removed:
+            await query.answer("Account not found!", show_alert=True)
+            return
+        
+        account_name = account_removed.get('custom_name', f"Account {account_id}")
+        
+        # Update accounts
+        user_data["accounts"] = new_accounts
+        
+        # Update selected account if needed
+        selected_id = user_data.get("selected_account_id", 1)
+        if selected_id == account_id and new_accounts:
+            user_data["selected_account_id"] = new_accounts[0]['id']
+        
+        # If no accounts left, remove user completely
+        if len(new_accounts) == 0:
+            # Remove from account_manager
+            if user_id_str in account_manager.user_tokens:
+                del account_manager.user_tokens[user_id_str]
+            if user_id_str in account_manager.user_selected_accounts:
+                del account_manager.user_selected_accounts[user_id_str]
+            
+            # Remove user
+            del accounts[user_id_str]
+            save_accounts(accounts)
+            
+            await query.answer(f"✅ {account_name} removed! User has no more accounts.", show_alert=True)
+            
+            # Go back to users list
+            await show_all_users_with_accounts(update, context, 0)
+            return
+        else:
             accounts[user_id_str] = user_data
             save_accounts(accounts)
             
+            # Re-initialize user tokens
             if user_id_str in account_manager.user_tokens:
-                account_manager.user_tokens[user_id_str] = [
-                    token for token in account_manager.user_tokens[user_id_str] 
-                    if token not in account_manager.token_info
-                ]
+                await account_manager.initialize_user(int(user_id_str))
             
-            await update.message.reply_text(
-                f"✅ Account removed successfully!\n\n"
-                f"👤 User ID: `{target_user_id}`\n"
-                f"📛 Username: `{username}`"
-            )
-        else:
-            await update.message.reply_text(f"❌ Account `{username}` not found for user `{target_user_id}`")
-            
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+            await query.answer(f"✅ {account_name} removed successfully!", show_alert=True)
+        
+        # Refresh the account list (stay on same user)
+        await view_user_accounts(update, context)
+
+
+async def remove_all_accounts_from_user(update: Update, context: CallbackContext):
+    """Remove all accounts of a user and go back to users list"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data.startswith("remove_all_accs_"):
+        user_id_str = data.replace("remove_all_accs_", "")
+        
+        # Load fresh accounts
+        accounts = load_accounts()
+        
+        if user_id_str not in accounts:
+            await query.answer("User not found!", show_alert=True)
+            return
+        
+        user_data = accounts[user_id_str]
+        user_accounts = user_data.get("accounts", [])
+        account_count = len(user_accounts)
+        
+        # Get user info for message
+        first_account = user_accounts[0] if user_accounts else {}
+        api_username = first_account.get('username', 'Unknown')
+        
+        # Remove all tokens from account_manager
+        if user_id_str in account_manager.user_tokens:
+            for token in account_manager.user_tokens[user_id_str]:
+                if token in account_manager.token_info:
+                    del account_manager.token_info[token]
+                if token in account_manager.token_owners:
+                    del account_manager.token_owners[token]
+            del account_manager.user_tokens[user_id_str]
+        
+        if user_id_str in account_manager.user_selected_accounts:
+            del account_manager.user_selected_accounts[user_id_str]
+        
+        # Remove user from accounts
+        del accounts[user_id_str]
+        save_accounts(accounts)
+        
+        await query.answer(f"✅ All {account_count} accounts removed!", show_alert=True)
+        
+        # Go back to users list
+        await show_all_users_with_accounts(update, context, 0)
+
+
+async def back_to_users_list(update: Update, context: CallbackContext):
+    """Go back to users list"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Clear cache and go back to users list
+    await show_all_users_with_accounts(update, context, 0)
+
+
+async def close_remove_menu(update: Update, context: CallbackContext):
+    """Close the remove menu"""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("❌ Menu closed!")
 
 async def admin_list_accounts(update: Update, context: CallbackContext) -> None:
     if update.effective_user.id != ADMIN_ID:
@@ -6496,7 +6993,7 @@ def main():
     application.add_handler(CommandHandler("fakedisable", fake_payment_toggle_command))
     application.add_handler(CommandHandler("fakestatus", fake_payment_status_command))
 
-    # 🆕 Wallet Commands (FIXED)
+    # 🆕 Wallet Commands
     application.add_handler(CommandHandler("wallet", wallet_command))
     application.add_handler(CommandHandler("cancel", cancel_payment_method))
 
@@ -6508,61 +7005,44 @@ def main():
 
     # ───────────────── CALLBACK HANDLERS ─────────────────
 
-    application.add_handler(
-        CallbackQueryHandler(handle_statistics_callback, pattern=r"^stats_")
-    )
-
-    application.add_handler(
-        CallbackQueryHandler(handle_settlement_callback, pattern=r"^settlement_")
-    )
-
+    # Statistics / Settlement / Account callbacks
+    application.add_handler(CallbackQueryHandler(handle_statistics_callback, pattern=r"^stats_"))
+    application.add_handler(CallbackQueryHandler(handle_settlement_callback, pattern=r"^settlement_"))
     application.add_handler(
         CallbackQueryHandler(
             handle_account_selection,
             pattern=r"^(select_account_|refresh_all_accounts|close_accounts_menu|back_to_accounts|start_checking)"
         )
     )
-
     application.add_handler(
         CallbackQueryHandler(
             handle_payment_callback,
             pattern=r"^(payment_complete_|payment_details_|close_details)"
         )
     )
+    application.add_handler(CallbackQueryHandler(handle_membership_check, pattern=r"^check_membership$"))
 
+    # 🆕 Wallet Callbacks
     application.add_handler(
-        CallbackQueryHandler(
-            handle_membership_check,
-            pattern=r"^check_membership$"
-        )
+        CallbackQueryHandler(handle_wallet_callback, pattern=r"^(add_bkash|add_nagad|add_binance|close_wallet)$")
     )
+    application.add_handler(CallbackQueryHandler(handle_wallet_open, pattern=r"^open_wallet$"))
 
-    # 🆕 Wallet Callbacks (FIXED)
-    application.add_handler(
-        CallbackQueryHandler(
-            handle_wallet_callback,
-            pattern=r"^(add_bkash|add_nagad|add_binance|close_wallet)$"
-        )
-    )
-
-    application.add_handler(
-        CallbackQueryHandler(
-            handle_wallet_open,
-            pattern=r"^open_wallet$"
-        )
-    )
+    # 🆕 Remove Account Callbacks
+    application.add_handler(CallbackQueryHandler(handle_remove_chunk, pattern=r"^remove_chunk_"))
+    application.add_handler(CallbackQueryHandler(back_to_users_list, pattern=r"^back_to_users_list$"))
+    application.add_handler(CallbackQueryHandler(close_remove_menu, pattern=r"^close_remove_menu$"))
+    application.add_handler(CallbackQueryHandler(view_user_accounts, pattern=r"^view_user_acc_"))
+    application.add_handler(CallbackQueryHandler(remove_single_account_from_list, pattern=r"^remove_single_acc_"))
+    application.add_handler(CallbackQueryHandler(remove_all_accounts_from_user, pattern=r"^remove_all_accs_"))
 
     # ───────────────── MESSAGE HANDLERS ─────────────────
 
-    # ⚠️ IMPORTANT: Duplicate handler remove করা হয়েছে
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message_optimized)
-    )
+    # Main message handler
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message_optimized))
 
-    # 👉 Payment input handler (AFTER main handler)
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment_method_input)
-    )
+    # Payment input handler
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment_method_input))
 
     # ───────────────── JOB QUEUE ─────────────────
 
