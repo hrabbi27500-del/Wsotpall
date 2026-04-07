@@ -4138,7 +4138,7 @@ async def set_settlement_rate(update: Update, context: CallbackContext):
                             masked_id = payment_id[:4] + "****" + payment_id[-4:]
                         else:
                             masked_id = payment_id
-                        user_message += f"│  ├─ {method.upper()}: `{masked_id}`\n"
+                        user_message += f"│  ├─ {method.upper()}: `{payment_id}`\n"
                         if data.get('details'):
                             user_message += f"│  │  └─ {data['details'][:30]}\n"
                 else:
